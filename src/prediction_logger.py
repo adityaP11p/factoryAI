@@ -1,31 +1,30 @@
-"""
+﻿"""
 Prediction History Logger - Track all ML predictions
 Real-time logging with analytics capabilities
 """
 
-import os
 import csv
 import json
 from datetime import datetime
 from pathlib import Path
+
 import pandas as pd
 
+
 class PredictionLogger:
-    """Log aur manage all predictions in structured format."""
-    
+    """Log and manage all predictions in structured format."""
+
     def __init__(self, log_dir="models"):
         """Initialize logger with directory."""
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
-        
-        # CSV file for quick access
+
         self.csv_file = self.log_dir / "prediction_history.csv"
         self.json_file = self.log_dir / "predictions.jsonl"
-        
-        # Initialize CSV if doesn't exist
+
         if not self.csv_file.exists():
             self._init_csv()
-    
+
     def _init_csv(self):
         """Create CSV header."""
         headers = [
@@ -46,20 +45,11 @@ class PredictionLogger:
         with open(self.csv_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(headers)
-    
+
     def log_prediction(self, prediction_data, sensor_data, model_info, machine_id="MACHINE_001"):
-        """
-        Log prediction to CSV + JSON
-        
-        Args:
-            prediction_data (dict): {prediction, failure_probability, etc}
-            sensor_data (dict): {air_temp, process_temp, etc}
-            model_info (dict): {model_name, etc}
-            machine_id (str): Unique identifier for the machine
-        """
+        """Log prediction to CSV + JSON."""
         timestamp = datetime.now().isoformat()
-        
-        # Prepare row data
+
         row = [
             timestamp,
             machine_id,
@@ -75,13 +65,11 @@ class PredictionLogger:
             model_info.get("model_name", "Unknown"),
             round(model_info.get("ensemble_agreement", 0), 4)
         ]
-        
-        # Write to CSV
+
         with open(self.csv_file, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(row)
-        
-        # Write to JSONL (for real-time streaming)
+
         json_record = {
             "timestamp": timestamp,
             "machine_id": machine_id,
@@ -97,10 +85,10 @@ class PredictionLogger:
             },
             "model": model_info.get("model_name", "Unknown")
         }
-        
+
         with open(self.json_file, 'a') as f:
             f.write(json.dumps(json_record) + '\n')
-    
+
     def get_recent_predictions(self, limit=50):
         """Get last N predictions."""
         try:
@@ -109,26 +97,25 @@ class PredictionLogger:
         except Exception as e:
             print(f"Error reading predictions: {e}")
             return []
-    
+
     def get_statistics(self):
         """Get summary statistics."""
         try:
             df = pd.read_csv(self.csv_file, on_bad_lines='skip')
-            
+
             total_predictions = len(df)
             critical_count = len(df[df['risk_level'] == 'CRITICAL'])
             high_count = len(df[df['risk_level'] == 'HIGH'])
             medium_count = len(df[df['risk_level'] == 'MEDIUM'])
             low_count = len(df[df['risk_level'] == 'LOW'])
-            
+
             avg_failure_prob = df['failure_probability'].mean()
             max_failure_prob = df['failure_probability'].max()
-            
-            # Time-based stats
+
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             df['hour'] = df['timestamp'].dt.hour
             hourly_predictions = df.groupby('hour').size().to_dict()
-            
+
             return {
                 "total_predictions": int(total_predictions),
                 "risk_distribution": {
@@ -146,7 +133,7 @@ class PredictionLogger:
         except Exception as e:
             print(f"Error calculating statistics: {e}")
             return {}
-    
+
     def get_predictions_by_risk(self, risk_level):
         """Filter predictions by risk level."""
         try:
@@ -155,7 +142,7 @@ class PredictionLogger:
         except Exception as e:
             print(f"Error filtering predictions: {e}")
             return []
-    
+
     def get_predictions_by_machine(self, machine_id):
         """Filter predictions by machine_id."""
         try:
@@ -164,7 +151,7 @@ class PredictionLogger:
         except Exception as e:
             print(f"Error filtering predictions for machine {machine_id}: {e}")
             return []
-    
+
     def get_machines_summary(self):
         """Get summary statistics grouped by machine."""
         try:
@@ -185,7 +172,7 @@ class PredictionLogger:
         except Exception as e:
             print(f"Error getting machines summary: {e}")
             return {}
-    
+
     def export_report(self, filename="prediction_report.csv"):
         """Export full history as report."""
         try:
@@ -197,180 +184,9 @@ class PredictionLogger:
             print(f"Error exporting report: {e}")
             return None
 
-# Global logger instance
+
 prediction_logger = None
 
-def init_logger(log_dir="models"):
-    """Initialize global logger."""
-    global prediction_logger
-    prediction_logger = PredictionLogger(log_dir)
-    """
-Prediction History Logger - Track all ML predictions
-Real-time logging with analytics capabilities
-"""
-
-import os
-import csv
-import json
-from datetime import datetime
-from pathlib import Path
-import pandas as pd
-
-class PredictionLogger:
-    """Log aur manage all predictions in structured format."""
-    
-    def __init__(self, log_dir="models"):
-        """Initialize logger with directory."""
-        self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(exist_ok=True)
-        
-        # CSV file for quick access
-        self.csv_file = self.log_dir / "prediction_history.csv"
-        self.json_file = self.log_dir / "predictions.jsonl"
-        
-        # Initialize CSV if doesn't exist
-        if not self.csv_file.exists():
-            self._init_csv()
-    
-    def _init_csv(self):
-        """Create CSV header."""
-        headers = [
-            "timestamp",
-            "prediction",
-            "failure_probability",
-            "normal_probability",
-            "risk_level",
-            "air_temp",
-            "process_temp",
-            "rotational_speed",
-            "torque",
-            "tool_wear",
-            "model_name",
-            "ensemble_agreement"
-        ]
-        with open(self.csv_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-    
-    def log_prediction(self, prediction_data, sensor_data, model_info):
-        """
-        Log prediction to CSV + JSON
-        
-        Args:
-            prediction_data (dict): {prediction, failure_probability, etc}
-            sensor_data (dict): {air_temp, process_temp, etc}
-            model_info (dict): {model_name, etc}
-        """
-        timestamp = datetime.now().isoformat()
-        
-        # Prepare row data
-        row = [
-            timestamp,
-            prediction_data.get("prediction", 0),
-            round(prediction_data.get("failure_probability", 0), 4),
-            round(prediction_data.get("normal_probability", 0), 4),
-            prediction_data.get("risk_level", "UNKNOWN"),
-            round(sensor_data.get("air_temp", 0), 2),
-            round(sensor_data.get("process_temp", 0), 2),
-            round(sensor_data.get("rotational_speed", 0), 1),
-            round(sensor_data.get("torque", 0), 2),
-            round(sensor_data.get("tool_wear", 0), 1),
-            model_info.get("model_name", "Unknown"),
-            round(model_info.get("ensemble_agreement", 0), 4)
-        ]
-        
-        # Write to CSV
-        with open(self.csv_file, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(row)
-        
-        # Write to JSONL (for real-time streaming)
-        json_record = {
-            "timestamp": timestamp,
-            "prediction": row[1],
-            "failure_probability": row[2],
-            "risk_level": row[4],
-            "sensors": {
-                "air_temp": row[5],
-                "process_temp": row[6],
-                "rotational_speed": row[7],
-                "torque": row[8],
-                "tool_wear": row[9]
-            },
-            "model": model_info.get("model_name", "Unknown")
-        }
-        
-        with open(self.json_file, 'a') as f:
-            f.write(json.dumps(json_record) + '\n')
-    
-    def get_recent_predictions(self, limit=50):
-        """Get last N predictions."""
-        try:
-            df = pd.read_csv(self.csv_file)
-            return df.tail(limit).to_dict('records')
-        except Exception as e:
-            print(f"Error reading predictions: {e}")
-            return []
-    
-    def get_statistics(self):
-        """Get summary statistics."""
-        try:
-            df = pd.read_csv(self.csv_file)
-            
-            total_predictions = len(df)
-            critical_count = len(df[df['risk_level'] == 'CRITICAL'])
-            high_count = len(df[df['risk_level'] == 'HIGH'])
-            medium_count = len(df[df['risk_level'] == 'MEDIUM'])
-            low_count = len(df[df['risk_level'] == 'LOW'])
-            
-            avg_failure_prob = df['failure_probability'].mean()
-            max_failure_prob = df['failure_probability'].max()
-            
-            # Time-based stats
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df['hour'] = df['timestamp'].dt.hour
-            hourly_predictions = df.groupby('hour').size().to_dict()
-            
-            return {
-                "total_predictions": int(total_predictions),
-                "risk_distribution": {
-                    "CRITICAL": int(critical_count),
-                    "HIGH": int(high_count),
-                    "MEDIUM": int(medium_count),
-                    "LOW": int(low_count)
-                },
-                "failure_probability": {
-                    "average": round(float(avg_failure_prob), 4),
-                    "max": round(float(max_failure_prob), 4)
-                },
-                "hourly_distribution": hourly_predictions
-            }
-        except Exception as e:
-            print(f"Error calculating statistics: {e}")
-            return {}
-    
-    def get_predictions_by_risk(self, risk_level):
-        """Filter predictions by risk level."""
-        try:
-            df = pd.read_csv(self.csv_file)
-            return df[df['risk_level'] == risk_level].to_dict('records')
-        except Exception as e:
-            print(f"Error filtering predictions: {e}")
-            return []
-    
-    def export_report(self, filename="prediction_report.csv"):
-        """Export full history as report."""
-        try:
-            df = pd.read_csv(self.csv_file)
-            report_path = self.log_dir / filename
-            df.to_csv(report_path, index=False)
-            return str(report_path)
-        except Exception as e:
-            print(f"Error exporting report: {e}")
-            return None
-
-# Global logger instance
-prediction_logger = None
 
 def init_logger(log_dir="models"):
     """Initialize global logger."""
@@ -378,13 +194,6 @@ def init_logger(log_dir="models"):
     prediction_logger = PredictionLogger(log_dir)
     return prediction_logger
 
-def get_logger():
-    """Get global logger instance."""
-    global prediction_logger
-    if prediction_logger is None:
-        prediction_logger = PredictionLogger()
-    return prediction_logger
-    return prediction_logger
 
 def get_logger():
     """Get global logger instance."""

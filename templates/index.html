@@ -46,6 +46,26 @@
                 <i class="fas fa-history"></i>
                 <span>Prediction History</span>
             </a>
+            <a href="#" class="nav-item" data-section="factory-health">
+                <i class="fas fa-heartbeat"></i>
+                <span>Factory Health</span>
+            </a>
+            <a href="#" class="nav-item" data-section="machines-risk">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Machines at Risk</span>
+            </a>
+            <a href="#" class="nav-item" data-section="sensor-anomalies">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>Sensor Anomalies</span>
+            </a>
+            <a href="#" class="nav-item" data-section="maintenance">
+                <i class="fas fa-tools"></i>
+                <span>Maintenance Schedule</span>
+            </a>
+            <a href="#" class="nav-item" data-section="model-confidence">
+                <i class="fas fa-shield-alt"></i>
+                <span>Model Confidence</span>
+            </a>
         </nav>
         <div class="sidebar-footer">
             <div class="system-status">
@@ -194,6 +214,11 @@
                     <div class="sensor-name">Rotational Speed</div>
                     <div class="sensor-value"><span id="val-rpm">--</span> <small>RPM</small></div>
                     <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-rpm"></div></div>
+                </div>
+                <div class="sensor-card" id="sensor-machine-id">
+                    <div class="sensor-icon"><i class="fas fa-id-badge"></i></div>
+                    <div class="sensor-name">Machine ID</div>
+                    <div class="sensor-value"><span id="val-machine-id">--</span></div>
                 </div>
                 <div class="sensor-card" id="sensor-torque">
                     <div class="sensor-icon"><i class="fas fa-cog"></i></div>
@@ -411,6 +436,322 @@
                             <tr><td colspan="10" style="text-align: center; padding: 20px;">Loading predictions...</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Factory Health Section -->
+        <section class="content-section" id="section-factory-health">
+            <div class="tab-header">
+                <h2><i class="fas fa-heartbeat"></i> Factory Health Overview</h2>
+                <div class="header-buttons">
+                    <button onclick="loadFactoryHealth()" class="btn btn-refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="health-overview-grid">
+                <div class="health-card">
+                    <div class="health-metric">
+                        <div class="metric-icon"><i class="fas fa-heartbeat"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Health Score</span>
+                            <span class="metric-value" id="health-score">--</span>
+                            <span class="metric-unit">/100</span>
+                        </div>
+                    </div>
+                    <div class="health-status" id="health-status">LOADING...</div>
+                </div>
+
+                <div class="health-card">
+                    <div class="health-metric">
+                        <div class="metric-icon"><i class="fas fa-clock"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Uptime</span>
+                            <span class="metric-value" id="uptime-percentage">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                    </div>
+                    <div class="health-trend" id="uptime-trend">—</div>
+                </div>
+
+                <div class="health-card">
+                    <div class="health-metric">
+                        <div class="metric-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Failure Rate</span>
+                            <span class="metric-value" id="failure-rate">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                    </div>
+                    <div class="health-trend" id="failure-trend">—</div>
+                </div>
+
+                <div class="health-card">
+                    <div class="health-metric">
+                        <div class="metric-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Avg Risk</span>
+                            <span class="metric-value" id="average-risk">--</span>
+                        </div>
+                    </div>
+                    <div class="health-trend" id="risk-trend">—</div>
+                </div>
+            </div>
+
+            <div class="charts-grid-2" style="margin-top: 24px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-pie"></i> Risk Distribution</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="healthRiskChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-trending-up"></i> Health Trend</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="healthTrendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Machines at Risk Section -->
+        <section class="content-section" id="section-machines-risk">
+            <div class="tab-header">
+                <h2><i class="fas fa-exclamation-triangle"></i> Machines at Risk</h2>
+                <div class="header-buttons">
+                    <button onclick="loadMachinesAtRisk()" class="btn btn-refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <select id="risk-threshold" onchange="loadMachinesAtRisk()">
+                        <option value="0.3">Medium Risk +</option>
+                        <option value="0.5">High Risk +</option>
+                        <option value="0.8">Critical Risk +</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card critical">
+                    <h3>🔴 Critical</h3>
+                    <p id="critical-machines">0</p>
+                </div>
+                <div class="stat-card high">
+                    <h3>🟠 High Risk</h3>
+                    <p id="high-risk-machines">0</p>
+                </div>
+                <div class="stat-card medium">
+                    <h3>🟡 Medium Risk</h3>
+                    <p id="medium-risk-machines">0</p>
+                </div>
+                <div class="stat-card low">
+                    <h3>🟢 Low Risk</h3>
+                    <p id="low-risk-machines">0</p>
+                </div>
+            </div>
+
+            <div class="machines-risk-container">
+                <h3><i class="fas fa-list"></i> At-Risk Machines</h3>
+                <div class="table-wrapper">
+                    <table class="machines-table">
+                        <thead>
+                            <tr>
+                                <th>Machine ID</th>
+                                <th>Risk Level</th>
+                                <th>Avg Risk Score</th>
+                                <th>Max Risk Score</th>
+                                <th>Recent Readings</th>
+                                <th>Last Sensor Values</th>
+                                <th>Recommended Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="machinesRiskTableBody">
+                            <tr><td colspan="7" style="text-align: center; padding: 20px;">Loading machines...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sensor Anomalies Section -->
+        <section class="content-section" id="section-sensor-anomalies">
+            <div class="tab-header">
+                <h2><i class="fas fa-exclamation-circle"></i> Sensor Anomalies</h2>
+                <div class="header-buttons">
+                    <button onclick="loadSensorAnomalies()" class="btn btn-refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="anomalies-summary">
+                <div class="summary-card">
+                    <h3>Total Anomalies Detected</h3>
+                    <p id="total-anomalies">0</p>
+                </div>
+                <div class="summary-card">
+                    <h3>Sensors Monitored</h3>
+                    <p id="sensors-monitored">5</p>
+                </div>
+                <div class="summary-card">
+                    <h3>Average Anomaly Rate</h3>
+                    <p id="avg-anomaly-rate">--%</p>
+                </div>
+            </div>
+
+            <div class="anomalies-container">
+                <h3><i class="fas fa-chart-bar"></i> Anomaly Details</h3>
+                <div class="table-wrapper">
+                    <table class="anomalies-table">
+                        <thead>
+                            <tr>
+                                <th>Sensor</th>
+                                <th>Anomalies</th>
+                                <th>Total Readings</th>
+                                <th>Anomaly Rate</th>
+                                <th>Threshold (High)</th>
+                                <th>Threshold (Low)</th>
+                                <th>Current Mean</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="anomaliesTableBody">
+                            <tr><td colspan="8" style="text-align: center; padding: 20px;">Loading anomalies...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Maintenance Schedule Section -->
+        <section class="content-section" id="section-maintenance">
+            <div class="tab-header">
+                <h2><i class="fas fa-tools"></i> Predictive Maintenance Schedule</h2>
+                <div class="header-buttons">
+                    <button onclick="loadMaintenanceSchedule()" class="btn btn-refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <select id="schedule-days" onchange="loadMaintenanceSchedule()">
+                        <option value="7">Next 7 Days</option>
+                        <option value="14">Next 14 Days</option>
+                        <option value="30" selected>Next 30 Days</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="maintenance-stats">
+                <div class="stat-card urgent">
+                    <h3>🚨 Immediate</h3>
+                    <p id="immediate-maintenance">0</p>
+                </div>
+                <div class="stat-card high">
+                    <h3>🔴 Urgent</h3>
+                    <p id="urgent-maintenance">0</p>
+                </div>
+                <div class="stat-card medium">
+                    <h3>🟠 Soon</h3>
+                    <p id="soon-maintenance">0</p>
+                </div>
+                <div class="stat-card low">
+                    <h3>🟢 Routine</h3>
+                    <p id="routine-maintenance">0</p>
+                </div>
+            </div>
+
+            <div class="maintenance-container">
+                <h3><i class="fas fa-calendar"></i> Scheduled Maintenance</h3>
+                <div class="table-wrapper">
+                    <table class="maintenance-table">
+                        <thead>
+                            <tr>
+                                <th>Machine ID</th>
+                                <th>Type</th>
+                                <th>Urgency</th>
+                                <th>Scheduled Date</th>
+                                <th>Duration (hrs)</th>
+                                <th>Risk Score</th>
+                                <th>Description</th>
+                                <th>Parts Required</th>
+                                <th>Est. Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maintenanceTableBody">
+                            <tr><td colspan="9" style="text-align: center; padding: 20px;">Loading schedule...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Model Confidence Section -->
+        <section class="content-section" id="section-model-confidence">
+            <div class="tab-header">
+                <h2><i class="fas fa-shield-alt"></i> Model Confidence & Reliability</h2>
+                <div class="header-buttons">
+                    <button onclick="loadModelConfidence()" class="btn btn-refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="confidence-overview">
+                <div class="confidence-card">
+                    <div class="confidence-metric">
+                        <div class="metric-icon"><i class="fas fa-shield-alt"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Average Confidence</span>
+                            <span class="metric-value" id="avg-confidence">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                    </div>
+                    <div class="confidence-trend" id="confidence-trend">—</div>
+                </div>
+
+                <div class="confidence-card">
+                    <div class="confidence-metric">
+                        <div class="metric-icon"><i class="fas fa-users"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Ensemble Agreement</span>
+                            <span class="metric-value" id="ensemble-agreement">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                    </div>
+                    <div class="confidence-status" id="agreement-status">—</div>
+                </div>
+
+                <div class="confidence-card">
+                    <div class="confidence-metric">
+                        <div class="metric-icon"><i class="fas fa-chart-bar"></i></div>
+                        <div class="metric-info">
+                            <span class="metric-label">Total Predictions</span>
+                            <span class="metric-value" id="total-predictions">--</span>
+                        </div>
+                    </div>
+                    <div class="confidence-trend" id="predictions-trend">—</div>
+                </div>
+            </div>
+
+            <div class="charts-grid-2" style="margin-top: 24px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-pie"></i> Confidence Distribution</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="confidenceChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-balance-scale"></i> Model Agreement Trend</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="agreementChart"></canvas>
+                    </div>
                 </div>
             </div>
         </section>

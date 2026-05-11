@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         barRpm: document.getElementById('bar-rpm'),
         barTorque: document.getElementById('bar-torque'),
         barToolWear: document.getElementById('bar-tool-wear'),
+        valMachineId: document.getElementById('val-machine-id'),
         predResult: document.getElementById('prediction-result'),
         predProbCard: document.getElementById('prediction-prob'),
         riskBadge: document.getElementById('risk-badge'),
@@ -147,6 +148,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (targetId === 'history') {
                     loadPredictionHistory();
                     loadPredictionStats();
+                }
+
+                // Load data for new sections
+                if (targetId === 'factory-health') {
+                    loadFactoryHealth();
+                } else if (targetId === 'machines-risk') {
+                    loadMachinesAtRisk();
+                } else if (targetId === 'sensor-anomalies') {
+                    loadSensorAnomalies();
+                } else if (targetId === 'maintenance') {
+                    loadMaintenanceSchedule();
+                } else if (targetId === 'model-confidence') {
+                    loadModelConfidence();
                 }
 
                 // Close mobile menu
@@ -244,10 +258,222 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // NEW: Factory Health, Machines at Risk, Sensor Anomalies, Maintenance, Model Confidence
+    // ═══════════════════════════════════════════════════════════════════════
+
+    async function loadFactoryHealth() {
+        try {
+            const response = await fetch('/api/factory-health');
+            const data = await response.json();
+
+            if (data.success) {
+                const health = data.health;
+                document.getElementById('health-score').textContent = health.health_score;
+                document.getElementById('health-status').textContent = health.status;
+                document.getElementById('health-status').className = `health-status ${health.color}`;
+                document.getElementById('uptime-percentage').textContent = health.uptime_percentage;
+                document.getElementById('failure-rate').textContent = health.failure_rate;
+                document.getElementById('average-risk').textContent = (health.average_risk * 100).toFixed(2) + '%';
+
+                // Update health trend indicators
+                document.getElementById('uptime-trend').textContent = health.trend === 'improving' ? '↗' : '↘';
+                document.getElementById('failure-trend').textContent = health.trend === 'improving' ? '↘' : '↗';
+                document.getElementById('risk-trend').textContent = health.trend === 'improving' ? '↘' : '↗';
+            }
+        } catch (error) {
+            console.error('Error loading factory health:', error);
+        }
+    }
+
+    async function loadMachinesAtRisk() {
+        try {
+            const threshold = document.getElementById('risk-threshold').value;
+            const response = await fetch(`/api/machines-at-risk?threshold=${threshold}`);
+            const data = await response.json();
+
+            if (data.success) {
+                const machines = data.machines;
+
+                // Update stats
+                const critical = machines.filter(m => m.risk_level === 'CRITICAL').length;
+                const high = machines.filter(m => m.risk_level === 'HIGH').length;
+                const medium = machines.filter(m => m.risk_level === 'MEDIUM').length;
+                const low = machines.filter(m => m.risk_level === 'LOW').length;
+
+                document.getElementById('critical-machines').textContent = critical;
+                document.getElementById('high-risk-machines').textContent = high;
+                document.getElementById('medium-risk-machines').textContent = medium;
+                document.getElementById('low-risk-machines').textContent = low;
+
+                // Update table
+                const tbody = document.getElementById('machinesRiskTableBody');
+                if (machines.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">No machines at risk found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                machines.forEach(machine => {
+                    const row = `
+                        <tr>
+                            <td>${machine.machine_id}</td>
+                            <td><span class="risk-badge risk-${machine.risk_level.toLowerCase()}">${machine.risk_level}</span></td>
+                            <td>${(machine.average_risk_score * 100).toFixed(2)}%</td>
+                            <td>${(machine.max_risk_score * 100).toFixed(2)}%</td>
+                            <td>${machine.recent_readings}</td>
+                            <td>
+                                <small>
+                                    Air: ${machine.last_reading.air_temp}°K<br>
+                                    Process: ${machine.last_reading.process_temp}°K<br>
+                                    RPM: ${machine.last_reading.rotational_speed}<br>
+                                    Torque: ${machine.last_reading.torque} Nm
+                                </small>
+                            </td>
+                            <td><small>${machine.recommended_action}</small></td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+        } catch (error) {
+            console.error('Error loading machines at risk:', error);
+        }
+    }
+
+    async function loadSensorAnomalies() {
+        try {
+            const response = await fetch('/api/sensor-anomalies');
+            const data = await response.json();
+
+            if (data.success) {
+                const anomalies = data.anomalies;
+
+                // Update summary
+                document.getElementById('total-anomalies').textContent = anomalies.length;
+                document.getElementById('sensors-monitored').textContent = 5; // Fixed sensors
+
+                const totalAnomalies = anomalies.reduce((sum, a) => sum + a.anomaly_count, 0);
+                const avgRate = anomalies.length > 0 ? (totalAnomalies / (anomalies.length * 1000) * 100).toFixed(2) : '0.00';
+                document.getElementById('avg-anomaly-rate').textContent = `${avgRate}%`;
+
+                // Update table
+                const tbody = document.getElementById('anomaliesTableBody');
+                if (anomalies.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No anomalies detected</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                anomalies.forEach(anomaly => {
+                    const status = anomaly.anomaly_percentage > 5 ? 'Critical' : anomaly.anomaly_percentage > 2 ? 'Warning' : 'Normal';
+                    const statusClass = status === 'Critical' ? 'risk-critical' : status === 'Warning' ? 'risk-high' : 'risk-low';
+
+                    const row = `
+                        <tr>
+                            <td>${anomaly.sensor.replace('_', ' ').toUpperCase()}</td>
+                            <td>${anomaly.anomaly_count}</td>
+                            <td>${anomaly.total_readings}</td>
+                            <td>${anomaly.anomaly_percentage}%</td>
+                            <td>${anomaly.threshold_high}</td>
+                            <td>${anomaly.threshold_low}</td>
+                            <td>${anomaly.current_mean}</td>
+                            <td><span class="risk-badge ${statusClass}">${status}</span></td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+        } catch (error) {
+            console.error('Error loading sensor anomalies:', error);
+        }
+    }
+
+    async function loadMaintenanceSchedule() {
+        try {
+            const days = document.getElementById('schedule-days').value;
+            const response = await fetch(`/api/maintenance-schedule?days=${days}`);
+            const data = await response.json();
+
+            if (data.success) {
+                const schedule = data.schedule;
+
+                // Update stats
+                const immediate = schedule.filter(s => s.urgency === 'IMMEDIATE').length;
+                const urgent = schedule.filter(s => s.urgency === 'URGENT').length;
+                const soon = schedule.filter(s => s.urgency === 'SOON').length;
+                const routine = schedule.filter(s => s.urgency === 'ROUTINE').length;
+
+                document.getElementById('immediate-maintenance').textContent = immediate;
+                document.getElementById('urgent-maintenance').textContent = urgent;
+                document.getElementById('soon-maintenance').textContent = soon;
+                document.getElementById('routine-maintenance').textContent = routine;
+
+                // Update table
+                const tbody = document.getElementById('maintenanceTableBody');
+                if (schedule.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">No maintenance scheduled</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                schedule.forEach(item => {
+                    const urgencyClass = item.urgency === 'IMMEDIATE' ? 'risk-critical' :
+                                       item.urgency === 'URGENT' ? 'risk-high' :
+                                       item.urgency === 'SOON' ? 'risk-medium' : 'risk-low';
+
+                    const row = `
+                        <tr>
+                            <td>${item.machine_id}</td>
+                            <td>${item.maintenance_type}</td>
+                            <td><span class="risk-badge ${urgencyClass}">${item.urgency}</span></td>
+                            <td>${item.scheduled_date}</td>
+                            <td>${item.estimated_duration_hours}h</td>
+                            <td>${(item.risk_score * 100).toFixed(2)}%</td>
+                            <td><small>${item.description}</small></td>
+                            <td><small>${item.parts_required.join(', ')}</small></td>
+                            <td>$${item.estimated_cost}</td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+        } catch (error) {
+            console.error('Error loading maintenance schedule:', error);
+        }
+    }
+
+    async function loadModelConfidence() {
+        try {
+            const response = await fetch('/api/model-confidence');
+            const data = await response.json();
+
+            if (data.success) {
+                const confidence = data.confidence;
+
+                document.getElementById('avg-confidence').textContent = (confidence.average_confidence * 100).toFixed(1);
+                document.getElementById('ensemble-agreement').textContent = (confidence.ensemble_agreement * 100).toFixed(1);
+                document.getElementById('total-predictions').textContent = confidence.total_predictions;
+
+                // Update trends
+                document.getElementById('confidence-trend').textContent = confidence.confidence_trend === 'improving' ? '↗' : '↘';
+                document.getElementById('agreement-status').textContent = confidence.ensemble_agreement > 0.8 ? 'Strong' : confidence.ensemble_agreement > 0.6 ? 'Good' : 'Weak';
+                document.getElementById('predictions-trend').textContent = confidence.total_predictions > 0 ? 'Active' : 'Idle';
+            }
+        } catch (error) {
+            console.error('Error loading model confidence:', error);
+        }
+    }
+
     // Make functions globally available for inline onclick
     window.loadPredictionHistory = loadPredictionHistory;
     window.loadPredictionStats = loadPredictionStats;
     window.downloadReport = downloadReport;
+    window.loadFactoryHealth = loadFactoryHealth;
+    window.loadMachinesAtRisk = loadMachinesAtRisk;
+    window.loadSensorAnomalies = loadSensorAnomalies;
+    window.loadMaintenanceSchedule = loadMaintenanceSchedule;
+    window.loadModelConfidence = loadModelConfidence;
 
     // ── Data Fetching & UI Update ─────────────────────────────────
     async function fetchDashboardData() {
@@ -498,10 +724,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateSensorCards(data) {
         const sensors = data.sensor_readings;
+        const machineId = data.machine_id || sensors.machine_id || 'UNKNOWN';
         
         ui.valAirTemp.textContent = sensors.air_temp;
         ui.valProcessTemp.textContent = sensors.process_temp;
         ui.valRpm.textContent = sensors.rotational_speed;
+        ui.valMachineId.textContent = machineId;
         ui.valTorque.textContent = sensors.torque;
         ui.valToolWear.textContent = sensors.tool_wear;
 
@@ -545,6 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
+        const machineId = data.machine_id || data.sensor_readings.machine_id || 'UNKNOWN';
         const entry = document.createElement('div');
         entry.className = `log-entry ${isFailure ? 'failure' : 'normal'}`;
         
@@ -555,6 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="log-details" style="display: flex; flex-direction: column; gap: 4px;">
                 <div>
+                    Machine: <strong>${machineId}</strong> | 
                     Risk: <strong>${data.risk_level}</strong> | 
                     Prob: ${probability}% | 
                     Tq: ${data.sensor_readings.torque}Nm | 

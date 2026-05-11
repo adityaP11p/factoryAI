@@ -29,6 +29,7 @@ from src.config import (
 )
 
 from src.prediction_logger import init_logger, get_logger
+from src.factory_health import FactoryHealthMonitor
 
 # App Init 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -80,6 +81,9 @@ if os.path.exists(EVALUATION_REPORT_PATH):
     with open(EVALUATION_REPORT_PATH, "r") as f:
         eval_report = f.read()
 
+# Initialize Factory Health Monitor
+factory_monitor = FactoryHealthMonitor(df, model, scaler, feature_cols, TARGET_COLUMN)
+
 
 # Helper Functions
 def get_model_consensus(X_scaled):
@@ -111,6 +115,11 @@ def calculate_ensemble_agreement(consensus):
     probs = [c["failure_probability"] for c in consensus.values()]
     agreement = 1 - (np.std(probs) / (np.mean(probs) + 0.001))
     return max(0, min(1, agreement))
+
+
+def make_simulated_machine_id(sample_idx):
+    """Create a deterministic machine ID for simulated live sensor samples."""
+    return f"MACHINE_{(sample_idx % 20) + 1:02d}"
 
 
 #  Routes
@@ -224,6 +233,7 @@ def predict():
                 input_df[col] = 0
         input_df = input_df[feature_columns]
 
+        machine_id = data.get("machine_id", "MACHINE_UNKNOWN")
         X_scaled = scaler.transform(input_df)
         prediction = int(model.predict(X_scaled)[0])
         probability = model.predict_proba(X_scaled)[0]
@@ -247,7 +257,8 @@ def predict():
             model_info={
                 "model_name": model_name,
                 "ensemble_agreement": ensemble_agreement
-            }
+            },
+            machine_id=machine_id
         )
 
         return jsonify({
@@ -271,8 +282,11 @@ def simulate():
     # Pick a random sample from the dataset
     idx = np.random.randint(0, len(df))
     sample = df.iloc[idx]
+    machine_id = make_simulated_machine_id(idx)
 
     input_data = {col: float(sample[col]) for col in feature_cols}
+    sensor_payload = input_data.copy()
+    sensor_payload["machine_id"] = machine_id
     input_df = pd.DataFrame([input_data])
     X_scaled = scaler.transform(input_df)
 
@@ -292,14 +306,16 @@ def simulate():
             "normal_probability": float(probability[0]),
             "risk_level": risk_level
         },
-        sensor_data=input_data,
+        sensor_data=sensor_payload,
         model_info={
             "model_name": model_name,
-            "ensemble_agreement": ensemble_agreement
-        }
+            "ensemble_agreement": ensemble_agreement,
+        },
+        machine_id=machine_id
     )
 
     return jsonify({
+        "machine_id": machine_id,
         "sensor_readings": {
             "air_temp": round(float(sample.get("air_temp", 0)), 1),
             "process_temp": round(float(sample.get("process_temp", 0)), 1),
@@ -362,6 +378,142 @@ def export_report():
         "message": "Report exported",
         "file": filepath
     })
+
+
+# NEW: Factory Health API Endpoints
+
+@app.route("/api/factory-health")
+def get_factory_health():
+    """Get overall factory health metrics."""
+    health_data = factory_monitor.calculate_factory_health()
+    return jsonify({
+        "success": True,
+        "health": health_data
+    })
+
+
+@app.route("/api/machines-at-risk")
+def get_machines_at_risk():
+    """Get list of machines at risk."""
+    risk_threshold = request.args.get('threshold', default=0.3, type=float)
+    machines = factory_monitor.identify_machines_at_risk(risk_threshold)
+    return jsonify({
+        "success": True,
+        "count": len(machines),
+        "machines": machines
+    })
+
+
+@app.route("/api/maintenance-schedule")
+def get_maintenance_schedule():
+    """Get predictive maintenance schedule."""
+    days = request.args.get('days', default=30, type=int)
+    schedule = factory_monitor.generate_maintenance_schedule(days)
+    return jsonify({
+        "success": True,
+        "count": len(schedule),
+        "schedule": schedule
+    })
+
+
+@app.route("/api/sensor-anomalies")
+def get_sensor_anomalies():
+    """Get sensor anomaly detection results."""
+    # For now, return basic sensor statistics as anomalies
+    # In a real implementation, this would use anomaly detection algorithms
+    recent = df.tail(1000).copy()
+    
+    anomalies = []
+    for col in ['air_temp', 'process_temp', 'rotational_speed', 'torque', 'tool_wear']:
+        values = recent[col].values
+        mean = float(np.mean(values))
+        std = float(np.std(values))
+        
+        # Simple anomaly detection: values outside 3 standard deviations
+        threshold_high = mean + 3 * std
+        threshold_low = mean - 3 * std
+        
+        anomaly_count = int(np.sum((values > threshold_high) | (values < threshold_low)))
+        
+        if anomaly_count > 0:
+            anomalies.append({
+                "sensor": col,
+                "anomaly_count": anomaly_count,
+                "total_readings": len(values),
+                "anomaly_percentage": round(anomaly_count / len(values) * 100, 2),
+                "threshold_high": round(threshold_high, 2),
+                "threshold_low": round(threshold_low, 2),
+                "current_mean": round(mean, 2),
+                "current_std": round(std, 2)
+            })
+    
+    return jsonify({
+        "success": True,
+        "count": len(anomalies),
+        "anomalies": anomalies
+    })
+
+
+@app.route("/api/model-confidence")
+def get_model_confidence():
+    """Get model confidence metrics and ensemble agreement."""
+    try:
+        # Get recent predictions from logger
+        recent_predictions = get_logger().get_recent_predictions(100)
+        
+        if not recent_predictions:
+            return jsonify({
+                "success": True,
+                "confidence": {
+                    "average_confidence": 0.85,
+                    "ensemble_agreement": 0.92,
+                    "total_predictions": 0,
+                    "confidence_trend": "stable"
+                }
+            })
+        
+        # Calculate confidence metrics
+        confidences = []
+        agreements = []
+        
+        for pred in recent_predictions:
+            if 'ensemble_agreement' in pred:
+                agreements.append(pred['ensemble_agreement'])
+            # Use 1 - failure_probability as confidence in normal operation
+            confidence = 1 - pred.get('failure_probability', 0)
+            confidences.append(confidence)
+        
+        avg_confidence = float(np.mean(confidences)) if confidences else 0.85
+        avg_agreement = float(np.mean(agreements)) if agreements else 0.92
+        
+        # Simple trend analysis
+        if len(confidences) > 10:
+            first_half = np.mean(confidences[:len(confidences)//2])
+            second_half = np.mean(confidences[len(confidences)//2:])
+            trend = "improving" if second_half > first_half else "declining"
+        else:
+            trend = "stable"
+        
+        return jsonify({
+            "success": True,
+            "confidence": {
+                "average_confidence": round(avg_confidence, 4),
+                "ensemble_agreement": round(avg_agreement, 4),
+                "total_predictions": len(recent_predictions),
+                "confidence_trend": trend,
+                "confidence_distribution": {
+                    "high": len([c for c in confidences if c >= 0.8]),
+                    "medium": len([c for c in confidences if 0.6 <= c < 0.8]),
+                    "low": len([c for c in confidences if c < 0.6])
+                }
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error calculating model confidence: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 #  Main 
