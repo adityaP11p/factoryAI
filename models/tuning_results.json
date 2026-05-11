@@ -1,0 +1,35 @@
+{
+  "best_pr_auc": 0.774285872188716,
+  "best_params": {
+    "max_depth": 9,
+    "learning_rate": 0.27952788066123885,
+    "n_estimators": 336,
+    "subsample": 0.9497291703499371,
+    "colsample_bytree": 0.9129204876243098,
+    "min_child_weight": 4,
+    "gamma": 2.4929693608972174,
+    "scale_pos_weight": 33.699768177401786,
+    "eval_metric": "aucpr",
+    "random_state": 42,
+    "use_label_encoder": false
+  },
+  "n_trials": 50,
+  "feature_columns": [
+    "air_temp",
+    "process_temp",
+    "rotational_speed",
+    "torque",
+    "tool_wear",
+    "Type_L",
+    "Type_M",
+    "air_temp_mean_6",
+    "process_temp_mean_6",
+    "rpm_std_6",
+    "torque_std_6",
+    "air_temp_lag1",
+    "air_temp_lag2",
+    "temp_diff",
+    "wear_torque",
+    "rpm_ema"
+  ]
+}

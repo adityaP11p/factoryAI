@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FactoryGuard AI – Predictive Maintenance Dashboard</title>
+    <meta name="description" content="Real-time IoT predictive maintenance engine with ML-powered failure detection">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-shield-halved"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>FactoryGuard</h1>
+                    <span>AI Engine</span>
+                </div>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-section="overview">
+                <i class="fas fa-chart-line"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-section="sensors">
+                <i class="fas fa-microchip"></i>
+                <span>Live Sensors</span>
+            </a>
+            <a href="#" class="nav-item" data-section="predictions">
+                <i class="fas fa-brain"></i>
+                <span>Predictions</span>
+            </a>
+            <a href="#" class="nav-item" data-section="model">
+                <i class="fas fa-chart-bar"></i>
+                <span>Model Insights</span>
+            </a>
+            <!-- ✅ NEW: History Tab in Sidebar -->
+            <a href="#" class="nav-item" data-section="history">
+                <i class="fas fa-history"></i>
+                <span>Prediction History</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="system-status">
+                <div class="status-dot online"></div>
+                <span>System Online</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="menu-toggle" id="menuToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="breadcrumb">
+                    <span class="breadcrumb-item" id="sectionTitle">Dashboard Overview</span>
+                </div>
+            </div>
+            <div class="top-bar-right">
+                <div class="live-indicator">
+                    <div class="pulse-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <div class="timestamp" id="currentTime"></div>
+            </div>
+        </header>
+
+        <!-- Dashboard Overview Section -->
+        <section class="content-section active" id="section-overview">
+            <!-- KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card kpi-precision">
+                    <div class="kpi-icon"><i class="fas fa-bullseye"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Precision</span>
+                        <span class="kpi-value" id="kpi-precision">--</span>
+                    </div>
+                    <div class="kpi-trend up">
+                        <i class="fas fa-arrow-up"></i> High
+                    </div>
+                </div>
+                <div class="kpi-card kpi-recall">
+                    <div class="kpi-icon"><i class="fas fa-crosshairs"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Recall</span>
+                        <span class="kpi-value" id="kpi-recall">--</span>
+                    </div>
+                    <div class="kpi-trend up">
+                        <i class="fas fa-arrow-up"></i> Good
+                    </div>
+                </div>
+                <div class="kpi-card kpi-f1">
+                    <div class="kpi-icon"><i class="fas fa-chart-area"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">F1 Score</span>
+                        <span class="kpi-value" id="kpi-f1">--</span>
+                    </div>
+                    <div class="kpi-trend up">
+                        <i class="fas fa-arrow-up"></i> Balanced
+                    </div>
+                </div>
+                <div class="kpi-card kpi-prauc">
+                    <div class="kpi-icon"><i class="fas fa-trophy"></i></div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">PR-AUC</span>
+                        <span class="kpi-value" id="kpi-prauc">--</span>
+                    </div>
+                    <div class="kpi-trend up">
+                        <i class="fas fa-star"></i> Primary
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 1 -->
+            <div class="charts-grid-2">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-temperature-high"></i> Sensor Telemetry</h3>
+                        <div class="chart-badge">Last 200 readings</div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="sensorChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-pie-chart"></i> Failure Distribution</h3>
+                        <div class="chart-badge">All data</div>
+                    </div>
+                    <div class="chart-body chart-body-sm">
+                        <canvas id="failureTypeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 2 -->
+            <div class="charts-grid-2">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-ranking-star"></i> SHAP Feature Importance</h3>
+                        <div class="chart-badge">Top 10</div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="featureImportanceChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-shield-halved"></i> Risk Distribution</h3>
+                        <div class="chart-badge">Test set</div>
+                    </div>
+                    <div class="chart-body chart-body-sm">
+                        <canvas id="riskChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Sensors Section -->
+        <section class="content-section" id="section-sensors">
+            <div class="live-header">
+                <h2><i class="fas fa-satellite-dish"></i> Live Sensor Monitoring</h2>
+                <button class="btn-primary" id="startSimulation">
+                    <i class="fas fa-play"></i> Start Simulation
+                </button>
+            </div>
+
+            <div class="sensor-grid">
+                <div class="sensor-card" id="sensor-air-temp">
+                    <div class="sensor-icon"><i class="fas fa-thermometer-half"></i></div>
+                    <div class="sensor-name">Air Temperature</div>
+                    <div class="sensor-value"><span id="val-air-temp">--</span> <small>K</small></div>
+                    <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-air-temp"></div></div>
+                </div>
+                <div class="sensor-card" id="sensor-process-temp">
+                    <div class="sensor-icon"><i class="fas fa-fire"></i></div>
+                    <div class="sensor-name">Process Temperature</div>
+                    <div class="sensor-value"><span id="val-process-temp">--</span> <small>K</small></div>
+                    <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-process-temp"></div></div>
+                </div>
+                <div class="sensor-card" id="sensor-rpm">
+                    <div class="sensor-icon"><i class="fas fa-gauge-high"></i></div>
+                    <div class="sensor-name">Rotational Speed</div>
+                    <div class="sensor-value"><span id="val-rpm">--</span> <small>RPM</small></div>
+                    <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-rpm"></div></div>
+                </div>
+                <div class="sensor-card" id="sensor-torque">
+                    <div class="sensor-icon"><i class="fas fa-cog"></i></div>
+                    <div class="sensor-name">Torque</div>
+                    <div class="sensor-value"><span id="val-torque">--</span> <small>Nm</small></div>
+                    <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-torque"></div></div>
+                </div>
+                <div class="sensor-card" id="sensor-tool-wear">
+                    <div class="sensor-icon"><i class="fas fa-wrench"></i></div>
+                    <div class="sensor-name">Tool Wear</div>
+                    <div class="sensor-value"><span id="val-tool-wear">--</span> <small>min</small></div>
+                    <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-tool-wear"></div></div>
+                </div>
+                <div class="sensor-card prediction-card" id="sensor-prediction">
+                    <div class="sensor-icon"><i class="fas fa-brain"></i></div>
+                    <div class="sensor-name">AI Prediction</div>
+                    <div class="prediction-result" id="prediction-result">AWAITING DATA</div>
+                    <div class="prediction-prob" id="prediction-prob">--</div>
+                    <div class="risk-badge" id="risk-badge">—</div>
+                </div>
+            </div>
+
+            <div class="chart-card" style="margin-top: 24px;">
+                <div class="chart-header">
+                    <h3><i class="fas fa-wave-square"></i> Real-Time Sensor Feed</h3>
+                    <div class="chart-badge" id="sim-status">Idle</div>
+                </div>
+                <div class="chart-body">
+                    <canvas id="liveChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Simulation Log -->
+            <div class="chart-card" style="margin-top: 24px;">
+                <div class="chart-header">
+                    <h3><i class="fas fa-list-check"></i> Prediction Log</h3>
+                    <button class="btn-outline" id="clearLog">Clear</button>
+                </div>
+                <div class="log-container" id="predictionLog">
+                    <div class="log-empty">Start simulation to see predictions</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Predictions Section -->
+        <section class="content-section" id="section-predictions">
+            <h2 class="section-heading"><i class="fas fa-brain"></i> Manual Prediction</h2>
+            <p class="section-desc">Enter sensor values to get an instant failure prediction from the AI model.</p>
+
+            <div class="predict-form-card">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="input-air-temp"><i class="fas fa-thermometer-half"></i> Air Temperature (K)</label>
+                        <input type="number" id="input-air-temp" step="0.1" value="298.0" placeholder="e.g. 298.0">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-process-temp"><i class="fas fa-fire"></i> Process Temperature (K)</label>
+                        <input type="number" id="input-process-temp" step="0.1" value="308.5" placeholder="e.g. 308.5">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-rpm"><i class="fas fa-gauge-high"></i> Rotational Speed (RPM)</label>
+                        <input type="number" id="input-rpm" step="1" value="1500" placeholder="e.g. 1500">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-torque"><i class="fas fa-cog"></i> Torque (Nm)</label>
+                        <input type="number" id="input-torque" step="0.1" value="40.0" placeholder="e.g. 40.0">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-tool-wear"><i class="fas fa-wrench"></i> Tool Wear (min)</label>
+                        <input type="number" id="input-tool-wear" step="1" value="100" placeholder="e.g. 100">
+                    </div>
+                </div>
+                <button class="btn-primary btn-lg" id="predictBtn">
+                    <i class="fas fa-bolt"></i> Run Prediction
+                </button>
+            </div>
+
+            <div class="prediction-output hidden" id="predictionOutput">
+                <div class="pred-result-grid">
+                    <div class="pred-result-card">
+                        <div class="pred-label">Prediction</div>
+                        <div class="pred-value" id="pred-status">—</div>
+                    </div>
+                    <div class="pred-result-card">
+                        <div class="pred-label">Failure Probability</div>
+                        <div class="pred-value" id="pred-prob">—</div>
+                    </div>
+                    <div class="pred-result-card">
+                        <div class="pred-label">Risk Level</div>
+                        <div class="pred-value" id="pred-risk">—</div>
+                    </div>
+                    <div class="pred-result-card">
+                        <div class="pred-label">Action</div>
+                        <div class="pred-value" id="pred-action">—</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--text-secondary);"><i class="fas fa-users-viewfinder"></i> Model Consensus</h3>
+                    <div class="pred-result-grid" id="consensus-grid">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Model Insights Section -->
+        <section class="content-section" id="section-model">
+            <h2 class="section-heading"><i class="fas fa-chart-bar"></i> Model Performance Insights</h2>
+
+            <div class="model-info-grid">
+                <div class="model-info-card">
+                    <div class="model-info-icon"><i class="fas fa-microchip"></i></div>
+                    <div class="model-info-label">Model</div>
+                    <div class="model-info-value" id="model-name">—</div>
+                </div>
+                <div class="model-info-card">
+                    <div class="model-info-icon"><i class="fas fa-layer-group"></i></div>
+                    <div class="model-info-label">Features</div>
+                    <div class="model-info-value" id="model-features">—</div>
+                </div>
+                <div class="model-info-card">
+                    <div class="model-info-icon"><i class="fas fa-bullseye"></i></div>
+                    <div class="model-info-label">Accuracy</div>
+                    <div class="model-info-value" id="model-accuracy">—</div>
+                </div>
+            </div>
+
+            <div class="charts-grid-2" style="margin-top: 24px;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-chart-line"></i> Precision-Recall Curve</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="prCurveChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-table-cells"></i> Confusion Matrix</h3>
+                    </div>
+                    <div class="chart-body">
+                        <div class="confusion-matrix" id="confusionMatrix">
+                            <table class="cm-table">
+                                <thead>
+                                    <tr><th></th><th>Pred Normal</th><th>Pred Failure</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td class="cm-label">Actual Normal</td><td class="cm-tn" id="cm-tn">—</td><td class="cm-fp" id="cm-fp">—</td></tr>
+                                    <tr><td class="cm-label">Actual Failure</td><td class="cm-fn" id="cm-fn">—</td><td class="cm-tp" id="cm-tp">—</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ✅ NEW: Prediction History Section -->
+        <section class="content-section" id="section-history">
+            <div class="tab-header">
+                <h2><i class="fas fa-history"></i> Prediction History & Analytics</h2>
+                <div class="header-buttons">
+                    <button onclick="loadPredictionHistory()" class="btn btn-refresh">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button onclick="downloadReport()" class="btn btn-download">
+                        <i class="fas fa-download"></i> Download Report
+                    </button>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Predictions</h3>
+                    <p id="totalPredictions">0</p>
+                </div>
+                <div class="stat-card critical">
+                    <h3>🔴 Critical</h3>
+                    <p id="criticalCount">0</p>
+                </div>
+                <div class="stat-card high">
+                    <h3>🟠 High</h3>
+                    <p id="highCount">0</p>
+                </div>
+                <div class="stat-card medium">
+                    <h3>🟡 Medium</h3>
+                    <p id="mediumCount">0</p>
+                </div>
+                <div class="stat-card low">
+                    <h3>🟢 Low</h3>
+                    <p id="lowCount">0</p>
+                </div>
+            </div>
+            
+            <div class="predictions-table-container">
+                <h3><i class="fas fa-table"></i> Recent Predictions</h3>
+                <div class="table-wrapper">
+                    <table class="predictions-table">
+                        <thead>
+                            <tr>
+                                <th>🕐 Time</th>
+                                <th>Prediction</th>
+                                <th>Failure %</th>
+                                <th>Risk Level</th>
+                                <th>Air Temp</th>
+                                <th>Process Temp</th>
+                                <th>RPM</th>
+                                <th>Torque</th>
+                                <th>Tool Wear</th>
+                                <th>Model Agreement</th>
+                            </tr>
+                        </thead>
+                        <tbody id="predictionTableBody">
+                            <tr><td colspan="10" style="text-align: center; padding: 20px;">Loading predictions...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

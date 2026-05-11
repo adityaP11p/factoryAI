@@ -1,0 +1,17 @@
+feature,mean_abs_shap
+torque,2.088389
+tool_wear,1.4046233
+rotational_speed,1.2308204
+wear_torque,0.9608636
+torque_std_6,0.79775536
+temp_diff,0.68133396
+rpm_ema,0.5004662
+rpm_std_6,0.4691579
+air_temp_mean_6,0.24839862
+air_temp_lag1,0.24715158
+process_temp_mean_6,0.24244802
+process_temp,0.18448341
+air_temp,0.1297657
+air_temp_lag2,0.09773414
+Type_M,0.08005231
+Type_L,0.05998559

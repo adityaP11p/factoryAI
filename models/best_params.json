@@ -1,0 +1,35 @@
+{
+  "best_model_name": "XGBoost",
+  "pr_auc": 0.7592817695786049,
+  "feature_columns": [
+    "air_temp",
+    "process_temp",
+    "rotational_speed",
+    "torque",
+    "tool_wear",
+    "Type_L",
+    "Type_M",
+    "air_temp_mean_6",
+    "process_temp_mean_6",
+    "rpm_std_6",
+    "torque_std_6",
+    "air_temp_lag1",
+    "air_temp_lag2",
+    "temp_diff",
+    "wear_torque",
+    "rpm_ema"
+  ],
+  "n_features": 16,
+  "all_models_prauc": {
+    "Logistic Regression": 0.38150215901528695,
+    "Random Forest": 0.6648620372001135,
+    "XGBoost": 0.7592817695786049,
+    "LightGBM": 0.7441731018175765
+  },
+  "all_models_f1": {
+    "Logistic Regression": 0.3851851851851852,
+    "Random Forest": 0.6774193548387096,
+    "XGBoost": 0.7605633802816901,
+    "LightGBM": 0.6933333333333334
+  }
+}

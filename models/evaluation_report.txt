@@ -1,0 +1,28 @@
+============================================================
+FactoryGuard AI - Model Evaluation Report
+============================================================
+
+Model: XGBoost
+
+--- Primary Metrics ---
+Precision:           0.8438
+Recall:              0.6923
+F1 Score:            0.7606
+PR-AUC:              0.7593
+Average Precision:   0.7602
+
+--- Classification Report ---
+              precision    recall  f1-score   support
+
+      Normal       0.99      1.00      1.00      1961
+     Failure       0.84      0.69      0.76        39
+
+    accuracy                           0.99      2000
+   macro avg       0.92      0.84      0.88      2000
+weighted avg       0.99      0.99      0.99      2000
+
+
+--- Confusion Matrix ---
+               Predicted Normal  Predicted Failure
+Actual Normal          1956                5
+Actual Failure           12               27
