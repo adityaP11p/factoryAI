@@ -587,6 +587,8 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('❌ Failed to resolve machine issue');
         }
     }
+
+    window.handleResolveClick = handleResolveClick;
     // Global function to handle resolve clicks
     // window.handleResolveClick = function(machineId) {
     //     showConfirmationDialog(machineId, () => {
