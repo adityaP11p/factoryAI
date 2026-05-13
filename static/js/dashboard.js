@@ -357,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = '';
 
             machines.forEach(machine => {
-                if (isResolved(machine.machine_id)) return; 
+                // Resolved machines are already filtered out by the backend
                 const readings = machine.recent_readings || {};
 
                 const riskClass =
@@ -545,14 +545,48 @@ document.addEventListener('DOMContentLoaded', () => {
     //         alert('Failed to resolve machine issue');
     //     }
     // };
-    function handleResolveClick(machineId, timestamp) {
-    // 1. remove from UI instantly
-    const row = document.getElementById(`row-${machineId}`);
-    if (row) row.remove();
-
-    // 2. optional: store in localStorage (so it stays hidden after refresh)
-    resolveMachine(machineId);
-}
+    async function handleResolveClick(machineId, timestamp) {
+        try {
+            // Show confirmation dialog
+            if (!confirm(`Are you sure you want to resolve issues for ${machineId}?`)) {
+                return;
+            }
+            
+            // Call backend API to resolve
+            const response = await fetch('/api/resolve-machine', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    machine_id: machineId,
+                    resolved_by: 'user',
+                    notes: 'Resolved via dashboard'
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Remove from UI
+                const row = document.getElementById(`row-${machineId}`);
+                if (row) {
+                    row.style.opacity = '0.5';
+                    setTimeout(() => row.remove(), 300);
+                }
+                
+                alert(`✅ Machine ${machineId} resolved successfully`);
+                
+                // Reload the list after a short delay
+                setTimeout(() => loadMachinesAtRisk(), 500);
+            } else {
+                alert(`❌ Error: ${data.error}`);
+            }
+        } catch (error) {
+            console.error('Resolve Error:', error);
+            alert('❌ Failed to resolve machine issue');
+        }
+    }
     // Global function to handle resolve clicks
     // window.handleResolveClick = function(machineId) {
     //     showConfirmationDialog(machineId, () => {

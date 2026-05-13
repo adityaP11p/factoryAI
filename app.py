@@ -31,6 +31,7 @@ from src.config import (
 
 from src.prediction_logger import init_logger, get_logger
 from src.factory_health import FactoryHealthMonitor
+from src.database import get_database, init_db
 
 # App Init 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -38,6 +39,9 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # Logging 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize database
+db = init_db("models/factory_guard.db")
 
 # Initialize prediction logger
 prediction_logger = init_logger("models")
@@ -279,6 +283,20 @@ def predict():
             },
             machine_id=machine_id
         )
+        
+        # Log to database
+        db.log_failure_prediction(
+            machine_id=machine_id,
+            prediction=prediction,
+            failure_probability=failure_prob,
+            normal_probability=float(probability[0]),
+            risk_level=risk_level,
+            sensor_data=data,
+            model_info={
+                "model_name": model_name,
+                "ensemble_agreement": ensemble_agreement
+            }
+        )
 
         return jsonify({
             "success": True,
@@ -331,6 +349,20 @@ def simulate():
             "ensemble_agreement": ensemble_agreement,
         },
         machine_id=machine_id
+    )
+    
+    # Log to database
+    db.log_failure_prediction(
+        machine_id=machine_id,
+        prediction=prediction,
+        failure_probability=failure_prob,
+        normal_probability=float(probability[0]),
+        risk_level=risk_level,
+        sensor_data=sensor_payload,
+        model_info={
+            "model_name": model_name,
+            "ensemble_agreement": ensemble_agreement
+        }
     )
 
     return jsonify({
@@ -468,72 +500,57 @@ def get_factory_health():
 @app.route("/api/machines-at-risk", methods=["GET"])
 def get_machines_at_risk():
     """
-    Fetch unresolved machine failures from live prediction logs.
+    Fetch unresolved machine failures from SQLite database.
     Only prediction == 1 (Failure) records are returned.
     """
-
     try:
-        logger_instance = get_logger()
-
-        predictions = logger_instance.get_recent_predictions(limit=5000)
-
-        machines = []
-
-        for pred in predictions:
-
-            # prediction can come as string/int from CSV
-            prediction_value = int(pred.get("prediction", 0))
-
-            # Only failures
-            if prediction_value != 1:
-                continue
-
-            # Skip resolved rows
-            resolved = str(pred.get("resolved", "False")).lower() == "true"
-            if resolved:
-                continue
-
-            machines.append({
-                "timestamp": pred.get("timestamp"),
-
-                # Prediction Log → Machine
-                "machine_id": pred.get("machine_id", "UNKNOWN"),
-
-                # Prediction Log → Risk
-                "risk_level": pred.get("risk_level", "UNKNOWN"),
-
-                # Prediction Log → Prob
-                "avg_risk_score": round(
-                    float(pred.get("failure_probability", 0)),
-                    4
-                ),
-
-                # Latest sensor readings
-                "recent_readings": {
-                    "air_temp": float(pred.get("air_temp", 0)),
-                    "process_temp": float(pred.get("process_temp", 0)),
-                    "rotational_speed": float(pred.get("rotational_speed", 0)),
-                    "torque": float(pred.get("torque", 0)),
-                    "tool_wear": float(pred.get("tool_wear", 0)),
-                }
+        # Get unresolved failures from database
+        unresolved_failures = db.get_unresolved_failures(limit=500)
+        
+        if not unresolved_failures:
+            return jsonify({
+                "success": True,
+                "count": 0,
+                "machines": []
             })
-
+        
+        # Group by machine_id (latest reading per machine)
+        machines_dict = {}
+        for failure in unresolved_failures:
+            machine_id = failure.get("machine_id", "UNKNOWN")
+            
+            # Keep only the first (most recent) occurrence per machine
+            if machine_id not in machines_dict:
+                machines_dict[machine_id] = {
+                    "id": failure.get("id"),
+                    "timestamp": failure.get("timestamp"),
+                    "machine_id": machine_id,
+                    "risk_level": failure.get("risk_level", "UNKNOWN"),
+                    "avg_risk_score": failure.get("failure_probability", 0),
+                    "max_risk_score": failure.get("failure_probability", 0),
+                    "recent_readings": {
+                        "air_temp": failure.get("air_temp", 0),
+                        "process_temp": failure.get("process_temp", 0),
+                        "rotational_speed": failure.get("rotational_speed", 0),
+                        "torque": failure.get("torque", 0),
+                        "tool_wear": failure.get("tool_wear", 0),
+                    }
+                }
+        
         # Sort by highest risk first
-        machines = sorted(
-            machines,
+        machines_list = sorted(
+            machines_dict.values(),
             key=lambda x: x["avg_risk_score"],
             reverse=True
         )
-
+        
         return jsonify({
             "success": True,
-            "count": len(machines),
-            "machines": machines
+            "count": len(machines_list),
+            "machines": machines_list
         })
-
     except Exception as e:
         logger.error(f"Machines-at-risk API error: {e}")
-
         return jsonify({
             "success": False,
             "error": str(e),
@@ -646,6 +663,181 @@ def get_model_confidence():
         })
     except Exception as e:
         logger.error(f"Error calculating model confidence: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# NEW: SQLite Database API Endpoints (Resolve Machines, Live Sensor Data)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/api/resolve-machine", methods=["POST"])
+def resolve_machine():
+    """
+    Resolve/delete a machine failure from the at-risk list.
+    Stores resolution in SQLite database for persistence.
+    """
+    try:
+        data = request.json
+        machine_id = data.get("machine_id", "").strip()
+        notes = data.get("notes", "").strip()
+        resolved_by = data.get("resolved_by", "user")
+        
+        if not machine_id:
+            return jsonify({
+                "success": False,
+                "error": "machine_id is required"
+            }), 400
+        
+        # Resolve in database
+        success = db.resolve_machine_failure(machine_id, notes, resolved_by)
+        
+        if success:
+            logger.info(f"✅ Resolved machine {machine_id}")
+            return jsonify({
+                "success": True,
+                "message": f"Machine {machine_id} resolved",
+                "machine_id": machine_id
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to resolve machine {machine_id}"
+            }), 500
+    except Exception as e:
+        logger.error(f"Error resolving machine: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/live-sensor-data", methods=["POST"])
+def ingest_live_sensor_data():
+    """
+    Ingest live sensor data for a machine and generate prediction.
+    This endpoint allows real-time sensor data ingestion from hardware or IoT devices.
+    
+    Example payload:
+    {
+        "machine_id": "machine_7845",
+        "air_temp": 31.5,
+        "process_temp": 45.2,
+        "rotational_speed": 2500,
+        "torque": 45.5,
+        "tool_wear": 120,
+        "source": "iot_gateway"
+    }
+    """
+    try:
+        data = request.json
+        machine_id = data.get("machine_id", "").strip()
+        source = data.get("source", "api")
+        
+        if not machine_id:
+            return jsonify({
+                "success": False,
+                "error": "machine_id is required"
+            }), 400
+        
+        # Extract sensor readings
+        sensor_data = {
+            "air_temp": float(data.get("air_temp", 0)),
+            "process_temp": float(data.get("process_temp", 0)),
+            "rotational_speed": float(data.get("rotational_speed", 0)),
+            "torque": float(data.get("torque", 0)),
+            "tool_wear": float(data.get("tool_wear", 0))
+        }
+        
+        # Log sensor reading to database
+        db.log_live_sensor_reading(machine_id, sensor_data, source, data.get("metadata"))
+        
+        # Prepare data for ML prediction
+        input_data = {col: sensor_data.get(col, 0) for col in feature_cols}
+        input_df = pd.DataFrame([input_data])
+        
+        # Ensure all required features are present
+        for col in feature_columns:
+            if col not in input_df.columns:
+                input_df[col] = 0
+        input_df = input_df[feature_columns]
+        
+        # Make prediction
+        X_scaled = scaler.transform(input_df)
+        prediction = int(model.predict(X_scaled)[0])
+        probability = model.predict_proba(X_scaled)[0]
+        failure_prob = float(probability[1])
+        risk_level = calculate_risk(failure_prob)
+        
+        # Get ensemble consensus
+        consensus = get_model_consensus(X_scaled)
+        ensemble_agreement = calculate_ensemble_agreement(consensus)
+        
+        # Log to both systems
+        get_logger().log_prediction(
+            prediction_data={
+                "prediction": prediction,
+                "failure_probability": failure_prob,
+                "normal_probability": float(probability[0]),
+                "risk_level": risk_level
+            },
+            sensor_data=sensor_data,
+            model_info={
+                "model_name": model_name,
+                "ensemble_agreement": ensemble_agreement
+            },
+            machine_id=machine_id
+        )
+        
+        # Log to database
+        db.log_failure_prediction(
+            machine_id=machine_id,
+            prediction=prediction,
+            failure_probability=failure_prob,
+            normal_probability=float(probability[0]),
+            risk_level=risk_level,
+            sensor_data=sensor_data,
+            model_info={
+                "model_name": model_name,
+                "ensemble_agreement": ensemble_agreement
+            }
+        )
+        
+        logger.info(f"✅ Live sensor ingestion: {machine_id} → {risk_level}")
+        
+        return jsonify({
+            "success": True,
+            "machine_id": machine_id,
+            "prediction": prediction,
+            "failure_probability": round(failure_prob, 4),
+            "normal_probability": round(float(probability[0]), 4),
+            "risk_level": risk_level,
+            "maintenance_required": prediction == 1,
+            "ensemble_predictions": consensus,
+            "ensemble_agreement": round(ensemble_agreement, 4),
+            "timestamp": pd.Timestamp.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error ingesting live sensor data: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/database-stats", methods=["GET"])
+def get_database_stats():
+    """Get database statistics."""
+    try:
+        stats = db.get_statistics()
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
+    except Exception as e:
+        logger.error(f"Error fetching database stats: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
