@@ -19,6 +19,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 RAW_DATA_PATH = os.path.join(RAW_DATA_DIR, "sensor_data.csv")
 CLEANED_DATA_PATH = os.path.join(PROCESSED_DATA_DIR, "cleaned.csv")
 FEATURES_DATA_PATH = os.path.join(FEATURES_DATA_DIR, "features.csv")
+CHECK_DATA_PATH = os.path.join(DATA_DIR, "check.csv")
 
 # Model artifact paths
 

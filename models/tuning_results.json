@@ -1,14 +1,14 @@
 {
-  "best_pr_auc": 0.774285872188716,
+  "best_pr_auc": 0.782372235051701,
   "best_params": {
-    "max_depth": 9,
-    "learning_rate": 0.27952788066123885,
-    "n_estimators": 336,
-    "subsample": 0.9497291703499371,
-    "colsample_bytree": 0.9129204876243098,
-    "min_child_weight": 4,
-    "gamma": 2.4929693608972174,
-    "scale_pos_weight": 33.699768177401786,
+    "max_depth": 10,
+    "learning_rate": 0.07432718303563722,
+    "n_estimators": 204,
+    "subsample": 0.9788434192341,
+    "colsample_bytree": 0.9677716482315618,
+    "min_child_weight": 1,
+    "gamma": 0.23974540107186554,
+    "scale_pos_weight": 33.51152972387714,
     "eval_metric": "aucpr",
     "random_state": 42,
     "use_label_encoder": false

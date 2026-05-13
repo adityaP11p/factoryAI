@@ -286,60 +286,280 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadMachinesAtRisk() {
-        try {
-            const threshold = document.getElementById('risk-threshold').value;
-            const response = await fetch(`/api/machines-at-risk?threshold=${threshold}`);
-            const data = await response.json();
+    // ── Machines at Risk Management ───────────────────────────────
+    const RESOLVED_MACHINES_KEY = 'resolvedMachinesAtRisk';
 
-            if (data.success) {
-                const machines = data.machines;
+    function getResolvedMachines() {
+        const stored = localStorage.getItem(RESOLVED_MACHINES_KEY);
+        return stored ? JSON.parse(stored) : [];
+    }
 
-                // Update stats
-                const critical = machines.filter(m => m.risk_level === 'CRITICAL').length;
-                const high = machines.filter(m => m.risk_level === 'HIGH').length;
-                const medium = machines.filter(m => m.risk_level === 'MEDIUM').length;
-                const low = machines.filter(m => m.risk_level === 'LOW').length;
+    function saveResolvedMachines(machineIds) {
+        localStorage.setItem(RESOLVED_MACHINES_KEY, JSON.stringify(machineIds));
+    }
 
-                document.getElementById('critical-machines').textContent = critical;
-                document.getElementById('high-risk-machines').textContent = high;
-                document.getElementById('medium-risk-machines').textContent = medium;
-                document.getElementById('low-risk-machines').textContent = low;
-
-                // Update table
-                const tbody = document.getElementById('machinesRiskTableBody');
-                if (machines.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">No machines at risk found</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = '';
-                machines.forEach(machine => {
-                    const row = `
-                        <tr>
-                            <td>${machine.machine_id}</td>
-                            <td><span class="risk-badge risk-${machine.risk_level.toLowerCase()}">${machine.risk_level}</span></td>
-                            <td>${(machine.average_risk_score * 100).toFixed(2)}%</td>
-                            <td>${(machine.max_risk_score * 100).toFixed(2)}%</td>
-                            <td>${machine.recent_readings}</td>
-                            <td>
-                                <small>
-                                    Air: ${machine.last_reading.air_temp}°K<br>
-                                    Process: ${machine.last_reading.process_temp}°K<br>
-                                    RPM: ${machine.last_reading.rotational_speed}<br>
-                                    Torque: ${machine.last_reading.torque} Nm
-                                </small>
-                            </td>
-                            <td><small>${machine.recommended_action}</small></td>
-                        </tr>
-                    `;
-                    tbody.innerHTML += row;
-                });
-            }
-        } catch (error) {
-            console.error('Error loading machines at risk:', error);
+    function resolveMachine(machineId) {
+        const resolved = getResolvedMachines();
+        if (!resolved.includes(machineId)) {
+            resolved.push(machineId);
+            saveResolvedMachines(resolved);
         }
     }
+
+    function isResolved(machineId) {
+        return getResolvedMachines().includes(machineId);
+    }
+
+    function showConfirmationDialog(machineId, callback) {
+        if (confirm(`Issues resolved?`)) {
+            callback();
+        }
+    }
+
+    async function loadMachinesAtRisk() {
+        try {
+
+            // Correct API
+            const response = await fetch('/api/machines-at-risk');
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to load');
+            }
+
+            const machines = data.machines || [];
+
+            // Stats
+            const critical = machines.filter(m => m.risk_level === 'CRITICAL').length;
+            const high = machines.filter(m => m.risk_level === 'HIGH').length;
+            const medium = machines.filter(m => m.risk_level === 'MEDIUM').length;
+            const low = machines.filter(m => m.risk_level === 'LOW').length;
+
+            document.getElementById('critical-machines').textContent = critical;
+            document.getElementById('high-risk-machines').textContent = high;
+            document.getElementById('medium-risk-machines').textContent = medium;
+            document.getElementById('low-risk-machines').textContent = low;
+
+            const tbody = document.getElementById('machinesRiskTableBody');
+
+            if (machines.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="10" style="text-align:center;padding:20px;">
+                            No machines at risk found
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = '';
+
+            machines.forEach(machine => {
+                if (isResolved(machine.machine_id)) return; 
+                const readings = machine.recent_readings || {};
+
+                const riskClass =
+                    machine.risk_level === 'CRITICAL'
+                        ? 'risk-critical'
+                        : machine.risk_level === 'HIGH'
+                        ? 'risk-high'
+                        : machine.risk_level === 'MEDIUM'
+                        ? 'risk-medium'
+                        : 'risk-low';
+
+                const row = `
+                    <tr id="row-${machine.machine_id}">
+                        <td>
+                            <strong>${machine.machine_id}</strong>
+                        </td>
+
+                        <td>
+                            <span class="risk-badge ${riskClass}">
+                                ${machine.risk_level}
+                            </span>
+                        </td>
+
+                        <td>
+                            ${(machine.avg_risk_score * 100).toFixed(2)}%
+                        </td>
+
+                        <td>${readings.air_temp?.toFixed(2) || '-'}</td>
+
+                        <td>${readings.process_temp?.toFixed(2) || '-'}</td>
+
+                        <td>${readings.rotational_speed?.toFixed(1) || '-'}</td>
+
+                        <td>${readings.torque?.toFixed(2) || '-'}</td>
+
+                        <td>${readings.tool_wear?.toFixed(1) || '-'}</td>
+
+                        <td>
+                            <button 
+                                class="btn btn-sm btn-danger"
+                                onclick="handleResolveClick(
+                                    '${machine.machine_id}',
+                                    '${machine.timestamp}'
+                                )"
+                            >
+                                <i class="fas fa-check"></i>
+                                Delete/Resolve
+                            </button>
+                        </td>
+                    </tr>
+                `;
+
+                tbody.innerHTML += row;
+            });
+
+        } catch (error) {
+
+            console.error('Machines at Risk Error:', error);
+
+            const tbody = document.getElementById('machinesRiskTableBody');
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10"
+                        style="text-align:center;padding:20px;color:red;">
+                        Failed to load machines at risk
+                    </td>
+                </tr>
+            `;
+        }
+    }
+    // async function loadMachinesAtRisk() {
+    //     try {
+    //         // Fetch failure predictions from Live Sensor source
+    //         const response = await fetch('/api/machines-at-risk-failures');
+    //         const data = await response.json();
+
+    //         if (data.success) {
+    //             const allMachines = data.machines;
+                
+    //             // Filter out resolved machines
+    //             const resolved = getResolvedMachines();
+    //             const machines = allMachines.filter(m => !resolved.includes(m.machine_id));
+
+    //             // Update stats
+    //             const critical = machines.filter(m => m.risk_level === 'CRITICAL').length;
+    //             const high = machines.filter(m => m.risk_level === 'HIGH').length;
+    //             const medium = machines.filter(m => m.risk_level === 'MEDIUM').length;
+    //             const low = machines.filter(m => m.risk_level === 'LOW').length;
+
+    //             document.getElementById('critical-machines').textContent = critical;
+    //             document.getElementById('high-risk-machines').textContent = high;
+    //             document.getElementById('medium-risk-machines').textContent = medium;
+    //             document.getElementById('low-risk-machines').textContent = low;
+
+    //             // Update table
+    //             const tbody = document.getElementById('machinesRiskTableBody');
+    //             if (machines.length === 0) {
+    //                 tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">No machines at risk found</td></tr>';
+    //                 return;
+    //             }
+
+    //             tbody.innerHTML = '';
+    //             machines.forEach(machine => {
+    //                 const machineId = machine.machine_id;
+    //                 const riskBadgeClass = `risk-${machine.risk_level.toLowerCase()}`;
+    //                 const riskScore = (machine.failure_probability * 100).toFixed(2);
+                    
+    //                 const row = `
+    //                     <tr>
+    //                         <td><strong>${machineId}</strong></td>
+    //                         <td><span class="risk-badge ${riskBadgeClass}">${machine.risk_level}</span></td>
+    //                         <td>${riskScore}%</td>
+    //                         <td>${machine.air_temp.toFixed(2)}</td>
+    //                         <td>${machine.process_temp.toFixed(2)}</td>
+    //                         <td>${machine.rotational_speed.toFixed(1)}</td>
+    //                         <td>${machine.torque.toFixed(2)}</td>
+    //                         <td>${machine.tool_wear.toFixed(1)}</td>
+    //                         <td>
+    //                             <button class="btn btn-sm btn-danger" onclick="handleResolveClick('${machineId}')">
+    //                                 <i class="fas fa-check"></i> Delete/Resolve
+    //                             </button>
+    //                         </td>
+    //                     </tr>
+    //                 `;
+    //                 tbody.innerHTML += row;
+    //             });
+    //         }
+    //     } catch (error) {
+    //         console.error('Error loading machines at risk:', error);
+    //         const tbody = document.getElementById('machinesRiskTableBody');
+    //         tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px; color: red;">Error loading machines at risk</td></tr>';
+    //     }
+    // }
+
+    // window.handleResolveClick = function(machineId) {
+
+    //     const confirmed = confirm("Issues resolved?");
+
+    //     if (!confirmed) {
+    //         return;
+    //     }
+
+    //     resolveMachine(machineId);
+
+    //     loadMachinesAtRisk();
+    // };
+    // window.handleResolveClick = async function(machineId, timestamp) {
+
+    //     const confirmed = confirm("Issues resolved?");
+
+    //     if (!confirmed) {
+    //         return;
+    //     }
+
+    //     try {
+
+    //         const response = await fetch(
+    //             '/api/resolve-machine-issue',
+    //             {
+    //                 method: 'POST',
+    //                 headers: {
+    //                     'Content-Type': 'application/json'
+    //                 },
+    //                 body: JSON.stringify({
+    //                     machine_id: machineId,
+    //                     timestamp: timestamp
+    //                 })
+    //             }
+    //         );
+
+    //         const data = await response.json();
+
+    //         if (!data.success) {
+    //             throw new Error(data.error || 'Resolve failed');
+    //         }
+
+    //         // Refresh table
+    //         loadMachinesAtRisk();
+
+    //     } catch (error) {
+
+    //         console.error('Resolve Error:', error);
+
+    //         alert('Failed to resolve machine issue');
+    //     }
+    // };
+    function handleResolveClick(machineId, timestamp) {
+    // 1. remove from UI instantly
+    const row = document.getElementById(`row-${machineId}`);
+    if (row) row.remove();
+
+    // 2. optional: store in localStorage (so it stays hidden after refresh)
+    resolveMachine(machineId);
+}
+    // Global function to handle resolve clicks
+    // window.handleResolveClick = function(machineId) {
+    //     showConfirmationDialog(machineId, () => {
+    //         resolveMachine(machineId);
+    //         loadMachinesAtRisk();  // Refresh the table
+    //     });
+    // };
 
     async function loadSensorAnomalies() {
         try {
@@ -717,6 +937,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // ✅ Auto-refresh history on each simulation tick
             loadPredictionStats();
+            
+            // ✅ Auto-refresh Machines at Risk when failure detected
+            if (data.prediction === 1) {
+                loadMachinesAtRisk();
+            }
         } catch (error) {
             console.error("Simulation error:", error);
         }

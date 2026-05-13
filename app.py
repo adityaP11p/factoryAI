@@ -26,6 +26,7 @@ from src.config import (
     EVALUATION_REPORT_PATH,
     TEST_SIZE,
     MODELS_DIR,
+    CHECK_DATA_PATH,
 )
 
 from src.prediction_logger import init_logger, get_logger
@@ -64,9 +65,27 @@ model_name = metadata.get("best_model_name", "Unknown")
 model_prauc = metadata.get("pr_auc", 0)
 
 # Load feature data for dashboard
-df = pd.read_csv(FEATURES_DATA_PATH)
+# df = pd.read_csv(FEATURES_DATA_PATH)
+# exclude_cols = [TARGET_COLUMN, "timestamp"] + FAILURE_TYPE_COLUMNS
+
+# feature_cols = [col for col in df.columns if col not in exclude_cols]
+
+# Training/features dataset (ONLY for evaluation metrics)
+metrics_df = pd.read_csv(FEATURES_DATA_PATH)
+# Live/simulation dataset (for everything else)
+live_df = pd.read_csv(CHECK_DATA_PATH)
 exclude_cols = [TARGET_COLUMN, "timestamp"] + FAILURE_TYPE_COLUMNS
-feature_cols = [col for col in df.columns if col not in exclude_cols]
+
+feature_cols = [
+    col for col in metrics_df.columns
+    if col not in exclude_cols
+]
+
+for col in feature_cols:
+    if col not in live_df.columns:
+        live_df[col] = 0  # or np.nan depending on model
+        
+live_input_df = live_df[feature_cols]
 
 # Load feature importance
 importance_path = os.path.join(MODELS_DIR, "feature_importance.csv")
@@ -82,7 +101,7 @@ if os.path.exists(EVALUATION_REPORT_PATH):
         eval_report = f.read()
 
 # Initialize Factory Health Monitor
-factory_monitor = FactoryHealthMonitor(df, model, scaler, feature_cols, TARGET_COLUMN)
+factory_monitor = FactoryHealthMonitor(live_df, model, scaler, live_input_df, TARGET_COLUMN)
 
 
 # Helper Functions
@@ -117,9 +136,9 @@ def calculate_ensemble_agreement(consensus):
     return max(0, min(1, agreement))
 
 
-def make_simulated_machine_id(sample_idx):
-    """Create a deterministic machine ID for simulated live sensor samples."""
-    return f"MACHINE_{(sample_idx % 20) + 1:02d}"
+# def make_simulated_machine_id(sample_idx):
+#     """Create a deterministic machine ID for simulated live sensor samples."""
+#     return f"MACHINE_{(sample_idx % 500) + 1:02d}"
 
 
 #  Routes
@@ -133,11 +152,11 @@ def index():
 def dashboard_data():
     """Return all dashboard data in one call."""
     # Recent sensor readings (last 100)
-    recent = df.tail(100).copy()
+    recent = metrics_df.tail(100).copy()
 
     # Model metrics
-    split_idx = int(len(df) * (1 - TEST_SIZE))
-    test_df = df.iloc[split_idx:]
+    split_idx = int(len(metrics_df) * (1 - TEST_SIZE))
+    test_df = metrics_df.iloc[split_idx:]
     X_test = test_df[feature_cols]
     y_test = test_df[TARGET_COLUMN]
     X_test_scaled = pd.DataFrame(scaler.transform(X_test), columns=feature_cols)
@@ -157,15 +176,15 @@ def dashboard_data():
     cm = confusion_matrix(y_test, y_pred).tolist()
 
     # Failure distribution
-    total_failures = int(df[TARGET_COLUMN].sum())
-    total_normal = int(len(df) - total_failures)
+    total_failures = int(metrics_df[TARGET_COLUMN].sum())
+    total_normal = int(len(metrics_df) - total_failures)
     failure_types = {}
     for ft in FAILURE_TYPE_COLUMNS:
-        if ft in df.columns:
-            failure_types[ft] = int(df[ft].sum())
+        if ft in metrics_df.columns:
+            failure_types[ft] = int(metrics_df[ft].sum())
 
     # Sensor time series (last 200 points)
-    ts_data = df.tail(200)[["air_temp", "process_temp", "rotational_speed", "torque", "tool_wear", TARGET_COLUMN]].copy()
+    ts_data = metrics_df.tail(200)[["air_temp", "process_temp", "rotational_speed", "torque", "tool_wear", TARGET_COLUMN]].copy()
     ts_data = ts_data.reset_index(drop=True)
 
     # Feature importance (top 10)
@@ -280,11 +299,11 @@ def predict():
 def simulate():
     """Simulate real-time sensor data with prediction."""
     # Pick a random sample from the dataset
-    idx = np.random.randint(0, len(df))
-    sample = df.iloc[idx]
-    machine_id = make_simulated_machine_id(idx)
+    idx = np.random.randint(0, len(live_df))
+    sample = live_df.iloc[idx]
+    machine_id = sample.get("machine_id", "MACHINE_UNKNOWN")
 
-    input_data = {col: float(sample[col]) for col in feature_cols}
+    input_data = {col: float(sample[col]) for col in live_input_df}
     sensor_payload = input_data.copy()
     sensor_payload["machine_id"] = machine_id
     input_df = pd.DataFrame([input_data])
@@ -380,6 +399,50 @@ def export_report():
     })
 
 
+@app.route("/api/machines-at-risk-failures")
+def get_machines_at_risk_failures():
+    """Get machines with failure predictions (only prediction=1)."""
+    try:
+        predictions = get_logger().get_recent_predictions(limit=500)
+        
+        # Filter only failures (prediction=1)
+        failures = [p for p in predictions if p.get('prediction') == 1]
+        
+        # Group by machine_id and format for display
+        machines_dict = {}
+        for pred in failures:
+            machine_id = pred.get('machine_id', 'UNKNOWN')
+            
+            if machine_id not in machines_dict:
+                machines_dict[machine_id] = {
+                    'machine_id': machine_id,
+                    'risk_level': pred.get('risk_level', 'UNKNOWN'),
+                    'failure_probability': float(pred.get('failure_probability', 0)),
+                    'air_temp': float(pred.get('air_temp', 0)),
+                    'process_temp': float(pred.get('process_temp', 0)),
+                    'rotational_speed': float(pred.get('rotational_speed', 0)),
+                    'torque': float(pred.get('torque', 0)),
+                    'tool_wear': float(pred.get('tool_wear', 0)),
+                    'timestamp': pred.get('timestamp', '')
+                }
+        
+        # Sort by failure probability (descending)
+        machines_list = sorted(machines_dict.values(), key=lambda x: x['failure_probability'], reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "count": len(machines_list),
+            "machines": machines_list
+        })
+    except Exception as e:
+        logger.error(f"Error fetching failure predictions: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "machines": []
+        }), 500
+
+
 # NEW: Factory Health API Endpoints
 
 @app.route("/api/factory-health")
@@ -392,17 +455,90 @@ def get_factory_health():
     })
 
 
-@app.route("/api/machines-at-risk")
+# @app.route("/api/machines-at-risk")
+# def get_machines_at_risk():
+#     """Get list of machines at risk."""
+#     risk_threshold = request.args.get('threshold', default=0.3, type=float)
+#     machines = factory_monitor.identify_machines_at_risk(risk_threshold)
+#     return jsonify({
+#         "success": True,
+#         "count": len(machines),
+#         "machines": machines
+#     })
+@app.route("/api/machines-at-risk", methods=["GET"])
 def get_machines_at_risk():
-    """Get list of machines at risk."""
-    risk_threshold = request.args.get('threshold', default=0.3, type=float)
-    machines = factory_monitor.identify_machines_at_risk(risk_threshold)
-    return jsonify({
-        "success": True,
-        "count": len(machines),
-        "machines": machines
-    })
+    """
+    Fetch unresolved machine failures from live prediction logs.
+    Only prediction == 1 (Failure) records are returned.
+    """
 
+    try:
+        logger_instance = get_logger()
+
+        predictions = logger_instance.get_recent_predictions(limit=5000)
+
+        machines = []
+
+        for pred in predictions:
+
+            # prediction can come as string/int from CSV
+            prediction_value = int(pred.get("prediction", 0))
+
+            # Only failures
+            if prediction_value != 1:
+                continue
+
+            # Skip resolved rows
+            resolved = str(pred.get("resolved", "False")).lower() == "true"
+            if resolved:
+                continue
+
+            machines.append({
+                "timestamp": pred.get("timestamp"),
+
+                # Prediction Log → Machine
+                "machine_id": pred.get("machine_id", "UNKNOWN"),
+
+                # Prediction Log → Risk
+                "risk_level": pred.get("risk_level", "UNKNOWN"),
+
+                # Prediction Log → Prob
+                "avg_risk_score": round(
+                    float(pred.get("failure_probability", 0)),
+                    4
+                ),
+
+                # Latest sensor readings
+                "recent_readings": {
+                    "air_temp": float(pred.get("air_temp", 0)),
+                    "process_temp": float(pred.get("process_temp", 0)),
+                    "rotational_speed": float(pred.get("rotational_speed", 0)),
+                    "torque": float(pred.get("torque", 0)),
+                    "tool_wear": float(pred.get("tool_wear", 0)),
+                }
+            })
+
+        # Sort by highest risk first
+        machines = sorted(
+            machines,
+            key=lambda x: x["avg_risk_score"],
+            reverse=True
+        )
+
+        return jsonify({
+            "success": True,
+            "count": len(machines),
+            "machines": machines
+        })
+
+    except Exception as e:
+        logger.error(f"Machines-at-risk API error: {e}")
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "machines": []
+        }), 500
 
 @app.route("/api/maintenance-schedule")
 def get_maintenance_schedule():
@@ -421,7 +557,7 @@ def get_sensor_anomalies():
     """Get sensor anomaly detection results."""
     # For now, return basic sensor statistics as anomalies
     # In a real implementation, this would use anomaly detection algorithms
-    recent = df.tail(1000).copy()
+    recent = live_df.tail(1000).copy()
     
     anomalies = []
     for col in ['air_temp', 'process_temp', 'rotational_speed', 'torque', 'tool_wear']:

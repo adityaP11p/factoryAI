@@ -183,7 +183,45 @@ class PredictionLogger:
         except Exception as e:
             print(f"Error exporting report: {e}")
             return None
+        
+    def get_machines_at_risk(self):
+        """Return unresolved machine failures."""
 
+        try:
+            df = pd.read_csv(self.csv_file, on_bad_lines='skip')
+
+            # Keep only failure predictions
+            df = df[df['prediction'] == 1]
+
+            # Keep only unresolved
+            if 'resolved' in df.columns:
+                df = df[df['resolved'] == False]
+
+            machines = []
+
+            for _, row in df.iterrows():
+
+                recent_readings = {
+                    "air_temp": row['air_temp'],
+                    "process_temp": row['process_temp'],
+                    "rotational_speed": row['rotational_speed'],
+                    "torque": row['torque'],
+                    "tool_wear": row['tool_wear']
+                }
+
+                machines.append({
+                    "timestamp": row['timestamp'],
+                    "machine_id": row['machine_id'],
+                    "risk_level": row['risk_level'],
+                    "avg_risk_score": row['failure_probability'],
+                    "recent_readings": recent_readings
+                })
+
+            return machines
+
+        except Exception as e:
+            print(f"Error getting machines at risk: {e}")
+            return []
 
 prediction_logger = None
 
