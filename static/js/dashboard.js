@@ -396,6 +396,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${readings.tool_wear?.toFixed(1) || '-'}</td>
 
                         <td>
+                            ${
+                                machine.explanation && machine.explanation.length > 0
+                                ? machine.explanation.map(exp => `
+                                    <div style="margin-bottom:4px;">
+                                        <strong>${exp.feature}</strong>
+                                        (${exp.impact > 0 ? '+' : ''}${exp.impact})
+                                    </div>
+                                `).join('')
+                                : '<span style="opacity:0.6;">No explanation</span>'
+                            }
+                        </td>
+
+                        <td>
                             <button 
                                 class="btn btn-sm btn-danger"
                                 onclick="handleResolveClick(

@@ -13,6 +13,8 @@ import pandas as pd
 from flask import Flask, render_template, jsonify, request
 import joblib
 
+import shap
+
 # Path Setup 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -32,6 +34,7 @@ from src.config import (
 from src.prediction_logger import init_logger, get_logger
 from src.factory_health import FactoryHealthMonitor
 from src.database import get_database, init_db
+from src.explainability import explain_single_prediction
 
 # App Init 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -48,6 +51,7 @@ prediction_logger = init_logger("models")
 
 # Load Model Artifacts 
 model = joblib.load(BEST_MODEL_PATH)
+
 
 # Load ensemble models
 ensemble_models = {}
@@ -67,6 +71,14 @@ with open(BEST_PARAMS_PATH, "r") as f:
 feature_columns = metadata.get("feature_columns", [])
 model_name = metadata.get("best_model_name", "Unknown")
 model_prauc = metadata.get("pr_auc", 0)
+
+# Create SHAP explainer once globally
+try:
+    shap_explainer = shap.TreeExplainer(model)
+    logger.info("SHAP explainer initialized")
+except Exception as e:
+    shap_explainer = None
+    logger.warning(f"Failed to initialize SHAP explainer: {e}")
 
 # Load feature data for dashboard
 # df = pd.read_csv(FEATURES_DATA_PATH)
@@ -521,6 +533,51 @@ def get_machines_at_risk():
             
             # Keep only the first (most recent) occurrence per machine
             if machine_id not in machines_dict:
+                # Sensor values
+                sensor_values = {
+                    "air_temp": failure.get("air_temp", 0),
+                    "process_temp": failure.get("process_temp", 0),
+                    "rotational_speed": failure.get("rotational_speed", 0),
+                    "torque": failure.get("torque", 0),
+                    "tool_wear": failure.get("tool_wear", 0),
+                }
+
+                # Prepare ML input
+                input_data = {col: sensor_values.get(col, 0) for col in feature_columns}
+                input_df = pd.DataFrame([input_data])[feature_columns]
+
+                # Scale input
+                X_scaled = pd.DataFrame(
+                    scaler.transform(input_df),
+                    columns=feature_columns
+                )
+
+                # Generate SHAP explanation
+                shap_explanation = []
+
+                if shap_explainer is not None:
+                    try:
+                        explanation_df = explain_single_prediction(
+                            model,
+                            shap_explainer,
+                            X_scaled,
+                            feature_columns
+                        )
+
+                        # Top 3 important features
+                        top_features = explanation_df.head(3)
+
+                        shap_explanation = [
+                            {
+                                "feature": row["feature"],
+                                "impact": round(float(row["shap_value"]), 4)
+                            }
+                            for _, row in top_features.iterrows()
+                        ]
+
+                    except Exception as e:
+                        logger.warning(f"SHAP failed for {machine_id}: {e}")
+
                 machines_dict[machine_id] = {
                     "id": failure.get("id"),
                     "timestamp": failure.get("timestamp"),
@@ -528,13 +585,8 @@ def get_machines_at_risk():
                     "risk_level": failure.get("risk_level", "UNKNOWN"),
                     "avg_risk_score": failure.get("failure_probability", 0),
                     "max_risk_score": failure.get("failure_probability", 0),
-                    "recent_readings": {
-                        "air_temp": failure.get("air_temp", 0),
-                        "process_temp": failure.get("process_temp", 0),
-                        "rotational_speed": failure.get("rotational_speed", 0),
-                        "torque": failure.get("torque", 0),
-                        "tool_wear": failure.get("tool_wear", 0),
-                    }
+                    "recent_readings": sensor_values,
+                    "explanation": shap_explanation
                 }
         
         # Sort by highest risk first
