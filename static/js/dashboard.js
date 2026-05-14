@@ -1052,7 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
         entry.className = `log-entry ${isFailure ? 'failure' : 'normal'}`;
         
         entry.innerHTML = `
-            <div class="log-time">${data.timestamp.split(' ')[1]}</div>
+            
             <div class="log-status" style="color: ${isFailure ? 'var(--accent-red)' : 'var(--accent-green)'}">
                 ${isFailure ? 'FAILURE' : 'NORMAL'}
             </div>
@@ -1062,7 +1062,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     Risk: <strong>${data.risk_level}</strong> | 
                     Prob: ${probability}% | 
                     Tq: ${data.sensor_readings.torque}Nm | 
-                    Wear: ${data.sensor_readings.tool_wear}m
+                    Wear: ${data.sensor_readings.tool_wear}m |
+
+                    <span style="
+                        color: ${
+                            data.latency_ms < 50
+                                ? '#10b981'
+                                : data.latency_ms < 100
+                                ? '#f59e0b'
+                                : '#ef4444'
+                        };
+                        font-weight: 600;
+                    ">
+                        Latency: ${data.latency_ms?.toFixed(2) || 0}ms
+                    </span>
                 </div>
                 <div style="font-size: 11px; opacity: 0.7;">
                     ${modelsInfo}
@@ -1080,6 +1093,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function clearLog() {
         ui.predLog.innerHTML = '<div class="log-empty">Start simulation to see predictions</div>';
+    }
+
+    // ── Latency Metrics ─────────────────────────────
+    const latencyElement = document.getElementById("latency-value");
+    const inferenceElement = document.getElementById("inference-value");
+
+    if (latencyElement && data.latency_ms !== undefined) {
+
+        latencyElement.innerText =
+            data.latency_ms.toFixed(2) + " ms";
+
+        // Color coding
+        if (data.latency_ms < 50) {
+            latencyElement.style.color = "#10b981"; // green
+        }
+        else if (data.latency_ms < 100) {
+            latencyElement.style.color = "#f59e0b"; // yellow
+        }
+        else {
+            latencyElement.style.color = "#ef4444"; // red
+        }
+    }
+
+    if (inferenceElement && data.inference_latency_ms !== undefined) {
+
+        inferenceElement.innerText =
+            data.inference_latency_ms.toFixed(2) + " ms";
+
+        // Color coding
+        if (data.inference_latency_ms < 10) {
+            inferenceElement.style.color = "#10b981";
+        }
+        else if (data.inference_latency_ms < 30) {
+            inferenceElement.style.color = "#f59e0b";
+        }
+        else {
+            inferenceElement.style.color = "#ef4444";
+        }
     }
 
     // ── Manual Prediction ─────────────────────────────────────────

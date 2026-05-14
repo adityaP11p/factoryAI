@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 from flask import Flask, render_template, jsonify, request
 import joblib
-
+import time
 import shap
-
+from datetime import datetime
 # Path Setup 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -121,16 +121,54 @@ factory_monitor = FactoryHealthMonitor(live_df, model, scaler, live_input_df, TA
 
 
 # Helper Functions
+# def get_model_consensus(X_scaled):
+#     """Helper to run inference on all 4 models and return their independent votes."""
+#     consensus = {}
+#     for name, m in ensemble_models.items():
+#         pred = int(m.predict(X_scaled)[0])
+#         prob = float(m.predict_proba(X_scaled)[0][1])
+#         consensus[name] = {
+#             "prediction": pred,
+#             "failure_probability": round(prob, 4)
+#         }
+#     return consensus
+
+from concurrent.futures import ThreadPoolExecutor
+
+def predict_single_model(name, model, X_scaled):
+
+    pred = int(model.predict(X_scaled)[0])
+
+    # OPTIONAL:
+    # remove predict_proba for extra speed
+    #prob = float(model.predict_proba(X_scaled)[0][1])
+
+    return name, {
+        "prediction": pred,
+        #"failure_probability": round(prob, 4)
+    }
+
+
 def get_model_consensus(X_scaled):
-    """Helper to run inference on all 4 models and return their independent votes."""
+
     consensus = {}
-    for name, m in ensemble_models.items():
-        pred = int(m.predict(X_scaled)[0])
-        prob = float(m.predict_proba(X_scaled)[0][1])
-        consensus[name] = {
-            "prediction": pred,
-            "failure_probability": round(prob, 4)
-        }
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+
+        futures = [
+            executor.submit(
+                predict_single_model,
+                name,
+                model,
+                X_scaled
+            )
+            for name, model in ensemble_models.items()
+        ]
+
+        for future in futures:
+            name, result = future.result()
+            consensus[name] = result
+
     return consensus
 
 
@@ -147,9 +185,14 @@ def calculate_risk(prob):
 
 def calculate_ensemble_agreement(consensus):
     """Calculate how much ensemble models agree."""
-    probs = [c["failure_probability"] for c in consensus.values()]
-    agreement = 1 - (np.std(probs) / (np.mean(probs) + 0.001))
-    return max(0, min(1, agreement))
+    # probs = [c["failure_probability"] for c in consensus.values()]
+    # agreement = 1 - (np.std(probs) / (np.mean(probs) + 0.001))
+    # return max(0, min(1, agreement))
+    preds = [c["prediction"] for c in consensus.values()]
+
+    agreement = preds.count(preds[0]) / len(preds)
+
+    return round(agreement, 2)
 
 
 # def make_simulated_machine_id(sample_idx):
@@ -328,26 +371,50 @@ def predict():
 @app.route("/api/simulate")
 def simulate():
     """Simulate real-time sensor data with prediction."""
+    # START TOTAL TIMER
+    request_start = time.perf_counter()
     # Pick a random sample from the dataset
+    sample_start = time.perf_counter()
+    
     idx = np.random.randint(0, len(live_df))
     sample = live_df.iloc[idx]
     machine_id = sample.get("machine_id", "MACHINE_UNKNOWN")
 
+    sample_time = (time.perf_counter() - sample_start) * 1000
+    # Prepare input
+    prep_start = time.perf_counter()
     input_data = {col: float(sample[col]) for col in live_input_df}
     sensor_payload = input_data.copy()
     sensor_payload["machine_id"] = machine_id
     input_df = pd.DataFrame([input_data])
-    X_scaled = scaler.transform(input_df)
+    prep_time = (time.perf_counter() - prep_start) * 1000
 
+    # Scaling latency
+    scaling_start = time.perf_counter()
+    X_scaled = scaler.transform(input_df)
+    scaling_time = (time.perf_counter() - scaling_start) * 1000
+
+    inference_start = time.perf_counter()
     prediction = int(model.predict(X_scaled)[0])
     probability = model.predict_proba(X_scaled)[0]
+
+    inference_time = (time.perf_counter() - inference_start) * 1000
     failure_prob = float(probability[1])
     risk_level = calculate_risk(failure_prob)
 
+    # TOTAL LATENCY
+    
+
+    # Ensemble latency
+    ensemble_start = time.perf_counter()
     consensus = get_model_consensus(X_scaled)
     ensemble_agreement = calculate_ensemble_agreement(consensus)
+    ensemble_time = (time.perf_counter() - ensemble_start) * 1000
 
+    total_latency = (time.perf_counter() - ensemble_start) * 1000
+    
     # LOG SIMULATED PREDICTION
+    logging_start = time.perf_counter()
     get_logger().log_prediction(
         prediction_data={
             "prediction": prediction,
@@ -376,6 +443,9 @@ def simulate():
             "ensemble_agreement": ensemble_agreement
         }
     )
+    logging_time = (time.perf_counter() - logging_start) * 1000
+
+    
 
     return jsonify({
         "machine_id": machine_id,
@@ -390,9 +460,15 @@ def simulate():
         "failure_probability": round(failure_prob, 4),
         "risk_level": risk_level,
         "actual_failure": int(sample.get(TARGET_COLUMN, 0)),
-        "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": datetime.now().strftime("%H:%M:%S"),
         "ensemble_predictions": consensus,
-        "ensemble_agreement": round(ensemble_agreement, 4)
+        "ensemble_agreement": round(ensemble_agreement, 4),
+        # LATENCY METRICS
+        "latency_ms": round(total_latency, 2),
+        "inference_latency_ms": round(inference_time, 2),
+        "scaling_latency_ms": round(scaling_time, 2),
+        "ensemble_latency_ms": round(ensemble_time, 2),
+        "logging_latency_ms": round(logging_time, 2)
     })
 
 
