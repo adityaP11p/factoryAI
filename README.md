@@ -19,6 +19,8 @@ python -c "from src.database import init_db; db = init_db('models/factory_guard.
 ### Run the Application
 
 ```bash
+# train the model
+python src/run_pipeline.py
 # Start the Flask web application
 python app.py
 
